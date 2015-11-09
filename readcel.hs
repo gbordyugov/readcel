@@ -214,13 +214,15 @@ instance Show CelDataHeader where
     "id:                 "  ++ show id     ++ "\n" ++
     "guid:               "  ++ show guid   ++ "\n" ++
     "date/time:          "  ++ show dt     ++ "\n" ++
-    "guid:               "  ++ show locale ++ "\n" ++
+    "locale:             "  ++ show locale ++ "\n" ++
     "no of nvt triplets: "  ++ show nNVT   ++ "\n" ++
-    "nvt triplets:     \n"  ++ showL nvts  ++
+    -- "nvt triplets:     \n"  ++ showL nvts  ++
     "no of parents :     "  ++ show np     ++ "\n" ++
-    "parents:          \n"  ++ showL ps
+    "parents:          \n"  ++ showL ps ++ "\n" -- ++
+    --"end of " ++ show id ++ " data header"
 
 showL []     = "eol"
+-- showL (x:[]) = show x
 showL (x:xs) = show x ++ "\n" ++ showL xs
 
 parseCelDataHeader :: Get CelDataHeader
