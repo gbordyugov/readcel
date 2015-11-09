@@ -1,6 +1,7 @@
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import Data.Binary.Get
+import Data.Binary.IEEE754
 import Data.Word
 import Data.Char
 import Data.Int
@@ -82,6 +83,15 @@ parseCelDateTime = parseCelWString
 parseCelLocale :: Get CelLocale
 parseCelLocale = parseCelWString
 
+parseNThings :: Get a -> Int -> Get [a]
+parseNThings parseThing n
+  | n <= 0 = do
+    return []
+  | otherwise = do
+    thing  <- parseThing
+    things <- parseNThings parseThing $ fromIntegral n-1
+    return $ thing:things
+
 
 {-
  -
@@ -96,7 +106,6 @@ data CelHeader = CelHeader { magic       :: CelUByte
 
 instance Show CelHeader where
   show (CelHeader m v n f) =
-                                 "Cel file header:\n" ++
     "magic number:                " ++ show m ++ "\n" ++
     "version:                     " ++ show v ++ "\n" ++
     "no. of data groups           " ++ show n ++ "\n" ++
@@ -143,8 +152,23 @@ newtype CelMIMEString = CelMIMEString { mimeString :: CelString }
 
 showMIMEString :: CelMIMEType -> CelMIMEString -> [Char]
 showMIMEString CelMIMEPlainText (CelMIMEString s) = 
-  show $ keepEvery 2 $ BSC.unpack s
-showMIMEString _ (CelMIMEString s) = "unprintable MIME value"
+  show $ filter (/= '\0') $ keepEvery 2 $ BSC.unpack s
+showMIMEString CelMIMEInt8  (CelMIMEString s) =
+  show $ runGet parseCelByte s
+showMIMEString CelMIMEUInt8  (CelMIMEString s) =
+  show $ runGet parseCelUByte s
+showMIMEString CelMIMEInt16  (CelMIMEString s) =
+  show $ runGet parseCelShort s
+showMIMEString CelMIMEUInt16 (CelMIMEString s) =
+  show $ runGet parseCelUShort s
+showMIMEString CelMIMEInt32  (CelMIMEString s) =
+  show $ runGet parseCelInt s
+showMIMEString CelMIMEUInt32 (CelMIMEString s) =
+  show $ runGet parseCelUInt s
+showMIMEString CelMIMEFloat (CelMIMEString s) =
+  show $ runGet getFloat32be s
+-- showMIMEString _ (CelMIMEString s) = "unprintable MIME value"
+
 {-
  -
  - Cel name/value/type triplet
@@ -155,9 +179,9 @@ data CelNVTTriplet = CelNVTTriplet { nvtName  :: CelWString
                                    , nvtType  :: CelMIMEType
                                    } 
 instance Show CelNVTTriplet where
-  show (CelNVTTriplet n v t) = "name:"  ++ show n ++ "," ++ 
-                               "value:" ++ showMIMEString t v ++ "," ++
-                               "type:"  ++ show t
+  show (CelNVTTriplet n v t) = "name: "  ++ show n ++ ", " ++ 
+                               "value: " ++ showMIMEString t v ++ ", " ++
+                               "type: "  ++ show t
 
 parseCelNVTTriplet :: Get CelNVTTriplet
 parseCelNVTTriplet = do
@@ -166,14 +190,7 @@ parseCelNVTTriplet = do
   typ   <- parseMIMEType
   return $ CelNVTTriplet name (CelMIMEString value) typ
 
-parseCelNVTTriplets :: Int -> Get [CelNVTTriplet]
-parseCelNVTTriplets n
-  | n <= 0 = do
-    return []
-  | otherwise = do
-    nvt  <- parseCelNVTTriplet
-    nvts <- parseCelNVTTriplets $ fromIntegral n-1
-    return $ nvt:nvts
+parseCelNVTTriplets = parseNThings parseCelNVTTriplet 
 
 {-
  -
@@ -188,15 +205,18 @@ data DataHeader = DataHeader { dataId   :: CelString
                              , nNVT     :: CelInt
                              , nvts     :: [CelNVTTriplet]
                              }
+
 instance Show DataHeader where
   show (DataHeader id guid dt locale nNVT nvts) = 
-                              "Cel data header:\n" ++
     "id:                 "  ++ show id     ++ "\n" ++
     "guid:               "  ++ show guid   ++ "\n" ++
     "date/time:          "  ++ show dt     ++ "\n" ++
     "guid:               "  ++ show locale ++ "\n" ++
     "no of nvt triplets: "  ++ show nNVT   ++ "\n" ++
-    "nvt triplets:     \n"  ++ show nvts   ++ "\n"
+    "nvt triplets:     \n"  ++ showL nvts  ++ "\n"
+    where
+      showL []     = ""
+      showL (x:xs) = show x ++ "\n" ++ showL xs
 
 parseDataHeader :: Get DataHeader
 parseDataHeader = do
@@ -208,19 +228,24 @@ parseDataHeader = do
   nvts     <- parseCelNVTTriplets $ fromIntegral nNVT
   return $ DataHeader dataId guId datetime locale nNVT nvts
 
-{-
- - a small testing function
- -}
 
-parseCelHeaderAndDataHeader :: Get (CelHeader, DataHeader)
-parseCelHeaderAndDataHeader = do
-  ch <- parseCelHeader
+data CelFile = CelFile { header     :: CelHeader
+                       , dataHeader :: DataHeader
+                       }
+
+instance Show CelFile where
+  show (CelFile h dh) = "Cel file header:\n" ++ show h ++
+                        "Cel data header:\n" ++ show dh
+
+parseCelFile :: Get CelFile
+parseCelFile = do
+  h <- parseCelHeader
   dh <- parseDataHeader
-  return (ch, dh)
+  return $ CelFile h dh
 
 
 processCel cel = res
-  where res  = runGet parseCelHeaderAndDataHeader cel
+  where res  = runGet parseCelFile cel
 
 main = do
   cel <- BS.readFile "array.cel"
