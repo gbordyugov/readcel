@@ -6,7 +6,6 @@ import Data.Word
 import Data.Char
 import Data.Int
 import Data.List (intersperse)
-import Control.Applicative
 
 type CelByte     = Int8
 type CelUByte    = Word8
@@ -127,7 +126,7 @@ parseCelHeader = do
  - Cel MIME types
  -
  -}
-data CelMIMEType = CelMIMEPlainText | CelMIMEFloat
+data CelMIMEType = CelMIMEPlainText | CelMIMEFloat  | CelMIMEAscii
                  | CelMIMEUInt32    | CelMIMEUInt16 | CelMIMEUInt8
                  | CelMIMEInt32     | CelMIMEInt16  | CelMIMEInt8
                  deriving (Show)
@@ -143,9 +142,10 @@ parseMIMEType = do
     ,(celWString "text/x-calvin-unsigned-integer-16", CelMIMEUInt16)
     ,(celWString "text/x-calvin-unsigned-integer-32", CelMIMEUInt32)
     ,(celWString "text/x-calvin-float"              , CelMIMEFloat)
+    ,(celWString "text/ascii"                       , CelMIMEAscii)
     ,(celWString "text/plain"                       , CelMIMEPlainText)]) of
       Just t -> return t
-      _      -> return $ error "undefined MIME type"
+      _      -> return $ error $ show "undefined MIME type: " ++ show s
 
 
 newtype CelMIMEString = CelMIMEString { mimeString :: CelString }
@@ -167,6 +167,7 @@ showMIMEString CelMIMEUInt32 (CelMIMEString s) =
   show $ runGet parseCelUInt s
 showMIMEString CelMIMEFloat (CelMIMEString s) =
   show $ runGet getFloat32be s
+showMIMEString CelMIMEAscii (CelMIMEString s) = show s
 -- showMIMEString _ (CelMIMEString s) = "unprintable MIME value"
 
 {-
@@ -198,50 +199,79 @@ parseCelNVTTriplets = parseNThings parseCelNVTTriplet
  -
  -}
 
-data DataHeader = DataHeader { dataId   :: CelString
-                             , guId     :: CelGUID
-                             , datetime :: CelDateTime
-                             , locale   :: CelLocale
-                             , nNVT     :: CelInt
-                             , nvts     :: [CelNVTTriplet]
-                             }
+data CelDataHeader = CelDataHeader { dataId   :: CelString
+                                   , guId     :: CelGUID
+                                   , datetime :: CelDateTime
+                                   , locale   :: CelLocale
+                                   , nNVT     :: CelInt
+                                   , nvts     :: [CelNVTTriplet]
+                                   , nparents :: CelInt
+                                   , parents  :: [CelDataHeader]
+                                   }
 
-instance Show DataHeader where
-  show (DataHeader id guid dt locale nNVT nvts) = 
+instance Show CelDataHeader where
+  show (CelDataHeader id guid dt locale nNVT nvts np ps) = 
     "id:                 "  ++ show id     ++ "\n" ++
     "guid:               "  ++ show guid   ++ "\n" ++
     "date/time:          "  ++ show dt     ++ "\n" ++
     "guid:               "  ++ show locale ++ "\n" ++
     "no of nvt triplets: "  ++ show nNVT   ++ "\n" ++
-    "nvt triplets:     \n"  ++ showL nvts  ++ "\n"
-    where
-      showL []     = ""
-      showL (x:xs) = show x ++ "\n" ++ showL xs
+    "nvt triplets:     \n"  ++ showL nvts  ++
+    "no of parents :     "  ++ show np     ++ "\n" ++
+    "parents:          \n"  ++ showL ps
 
-parseDataHeader :: Get DataHeader
-parseDataHeader = do
+showL []     = "eol"
+showL (x:xs) = show x ++ "\n" ++ showL xs
+
+parseCelDataHeader :: Get CelDataHeader
+parseCelDataHeader = do
   dataId   <- parseCelString
   guId     <- parseCelGUID
   datetime <- parseCelDateTime
   locale   <- parseCelLocale
   nNVT     <- parseCelInt
   nvts     <- parseCelNVTTriplets $ fromIntegral nNVT
-  return $ DataHeader dataId guId datetime locale nNVT nvts
+  np       <- parseCelInt
+  parents  <- parseCelDataHeaders $ fromIntegral np
+  return $ CelDataHeader dataId guId datetime locale nNVT nvts np parents
+
+parseCelDataHeaders= parseNThings parseCelDataHeader
+
+data CelDataGroup = CelDataGroup { posNextDataGroup :: CelUInt
+                                 , posFirstDataSet  :: CelUInt
+                                 , noDataSets       :: CelInt
+                                 , dgName           :: CelWString
+                                 }
+instance Show CelDataGroup where
+  show (CelDataGroup np fp n name) = 
+    "Data group:               " ++ show name ++ "\n" ++
+    "no of data sets:          " ++ show n    ++ "\n" ++
+    "next data group position: " ++ show np   ++ "\n" ++
+    "first data set position:  " ++ show fp   ++ "\n"
+
+parseDataGroup = do
+  np   <- parseCelUInt
+  fp   <- parseCelUInt
+  no   <- parseCelInt
+  name <- parseCelWString
+  return $ CelDataGroup np fp no name
 
 
-data CelFile = CelFile { header     :: CelHeader
-                       , dataHeader :: DataHeader
+data CelFile = CelFile { celHeader  :: CelHeader
+                       , dataHeader :: CelDataHeader
+                       -- , dg         :: CelDataGroup
                        }
 
 instance Show CelFile where
   show (CelFile h dh) = "Cel file header:\n" ++ show h ++
-                        "Cel data header:\n" ++ show dh
+                        "Cel data header:\n" ++ show dh -- ++
+                           -- "Data group     :\n" ++ show dg
 
 parseCelFile :: Get CelFile
 parseCelFile = do
-  h <- parseCelHeader
-  dh <- parseDataHeader
-  return $ CelFile h dh
+  h  <- parseCelHeader
+  dh <- parseCelDataHeader
+  return $ CelFile h dh 
 
 
 processCel cel = res
