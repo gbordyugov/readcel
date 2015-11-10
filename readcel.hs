@@ -218,8 +218,8 @@ instance Show CelDataHeader where
     "no of nvt triplets: "  ++ show nNVT   ++ "\n" ++
     -- "nvt triplets:     \n"  ++ showL nvts  ++
     "no of parents :     "  ++ show np     ++ "\n" ++
-    "parents:          \n"  ++ showL ps ++ "\n" -- ++
-    --"end of " ++ show id ++ " data header"
+    "parents:          \n"  ++ showL ps ++ "\n" 
+    ++ "end of " ++ show id ++ " data header"
 
 showL []     = "eol"
 -- showL (x:[]) = show x
