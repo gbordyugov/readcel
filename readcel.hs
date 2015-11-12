@@ -135,15 +135,16 @@ parseMIMEType :: Get CelMIMEType
 parseMIMEType = do
   s <- parseCelWString
   case (lookup s
-    [(celWString "text/x-calvin-integer-8"          , CelMIMEInt8)
-    ,(celWString "text/x-calvin-integer-16"         , CelMIMEInt16)
-    ,(celWString "text/x-calvin-integer-32"         , CelMIMEInt32)
-    ,(celWString "text/x-calvin-unsigned-integer-8" , CelMIMEUInt8)
-    ,(celWString "text/x-calvin-unsigned-integer-16", CelMIMEUInt16)
-    ,(celWString "text/x-calvin-unsigned-integer-32", CelMIMEUInt32)
-    ,(celWString "text/x-calvin-float"              , CelMIMEFloat)
-    ,(celWString "text/ascii"                       , CelMIMEAscii)
-    ,(celWString "text/plain"                       , CelMIMEPlainText)]) of
+    [ (celWString "text/x-calvin-integer-8"          , CelMIMEInt8)
+    , (celWString "text/x-calvin-integer-16"         , CelMIMEInt16)
+    , (celWString "text/x-calvin-integer-32"         , CelMIMEInt32)
+    , (celWString "text/x-calvin-unsigned-integer-8" , CelMIMEUInt8)
+    , (celWString "text/x-calvin-unsigned-integer-16", CelMIMEUInt16)
+    , (celWString "text/x-calvin-unsigned-integer-32", CelMIMEUInt32)
+    , (celWString "text/x-calvin-float"              , CelMIMEFloat)
+    , (celWString "text/ascii"                       , CelMIMEAscii)
+    , (celWString "text/plain"                       , CelMIMEPlainText)
+    ]) of
       Just t -> return t
       _      -> return $ error $ show "undefined MIME type: " ++ show s
 
@@ -165,10 +166,9 @@ showMIMEString CelMIMEInt32  (CelMIMEString s) =
   show $ runGet parseCelInt s
 showMIMEString CelMIMEUInt32 (CelMIMEString s) =
   show $ runGet parseCelUInt s
-showMIMEString CelMIMEFloat (CelMIMEString s) =
+showMIMEString CelMIMEFloat  (CelMIMEString s) =
   show $ runGet getFloat32be s
-showMIMEString CelMIMEAscii (CelMIMEString s) = show s
--- showMIMEString _ (CelMIMEString s) = "unprintable MIME value"
+showMIMEString CelMIMEAscii  (CelMIMEString s) = show s
 
 {-
  -
@@ -180,7 +180,7 @@ data CelNVTTriplet = CelNVTTriplet { nvtName  :: CelWString
                                    , nvtType  :: CelMIMEType
                                    } 
 instance Show CelNVTTriplet where
-  show (CelNVTTriplet n v t) = "name: "  ++ show n ++ ", " ++ 
+  show (CelNVTTriplet n v t) = "name: "  ++ show n             ++ ", " ++ 
                                "value: " ++ showMIMEString t v ++ ", " ++
                                "type: "  ++ show t
 
@@ -216,13 +216,12 @@ instance Show CelDataHeader where
     "date/time:          "  ++ show dt     ++ "\n" ++
     "locale:             "  ++ show locale ++ "\n" ++
     "no of nvt triplets: "  ++ show nNVT   ++ "\n" ++
-    -- "nvt triplets:     \n"  ++ showL nvts  ++
+    -- "nvt triplets:     \n"  ++ showL nvts  ++ "\n" ++
     "no of parents :     "  ++ show np     ++ "\n" ++
     "parents:          \n"  ++ showL ps ++ "\n" 
-    ++ "end of " ++ show id ++ " data header"
+    -- ++ "end of " ++ show id ++ " data header"
 
 showL []     = "eol"
--- showL (x:[]) = show x
 showL (x:xs) = show x ++ "\n" ++ showL xs
 
 parseCelDataHeader :: Get CelDataHeader
@@ -237,6 +236,10 @@ parseCelDataHeader = do
   parents  <- parseCelDataHeaders $ fromIntegral np
   return $ CelDataHeader dataId guId datetime locale nNVT nvts np parents
 
+{-
+ - still work in progress
+ -}
+
 parseCelDataHeaders= parseNThings parseCelDataHeader
 
 data CelDataGroup = CelDataGroup { posNextDataGroup :: CelUInt
@@ -249,7 +252,7 @@ instance Show CelDataGroup where
     "Data group:               " ++ show name ++ "\n" ++
     "no of data sets:          " ++ show n    ++ "\n" ++
     "next data group position: " ++ show np   ++ "\n" ++
-    "first data set position:  " ++ show fp   ++ "\n"
+    "first data set position:  " ++ show fp
 
 parseDataGroup = do
   np   <- parseCelUInt
@@ -258,6 +261,10 @@ parseDataGroup = do
   name <- parseCelWString
   return $ CelDataGroup np fp no name
 
+
+{-
+ - end of work in progress
+ -}
 
 data CelFile = CelFile { celHeader  :: CelHeader
                        , dataHeader :: CelDataHeader
@@ -277,7 +284,7 @@ parseCelFile = do
 
 
 processCel cel = res
-  where res  = runGet parseCelFile cel
+  where res = runGet parseCelFile cel
 
 main = do
   cel <- BS.readFile "array.cel"
