@@ -1,5 +1,9 @@
-import qualified Data.ByteString.Lazy as BS
-import qualified Data.ByteString.Lazy.Char8 as BSC
+-- import qualified Data.ByteString.Lazy.UTF8 as BSU
+import qualified Data.Text.Encoding         as DTE
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as BSL
+import qualified Data.ByteString.Char8      as BSC8
+import qualified Data.ByteString.Lazy.Char8 as BSLC8
 import Data.Binary.Get
 import Data.Binary.IEEE754
 import Data.Word
@@ -22,20 +26,20 @@ type CelChar     = Word8
 type CelWChar    = Word16
 
 -- strings
-type CelString  = BS.ByteString
-celString = BSC.pack
+type CelString  = BSL.ByteString
+celString = BSLC8.pack
 
-data CelWString = CelWString { wstring :: BS.ByteString } deriving (Eq)
+lazyToStrict = BS.concat . BSL.toChunks
+showWS       = show . DTE.decodeUtf16BE . lazyToStrict
+
+data CelWString = CelWString { wstring :: BSL.ByteString } deriving (Eq)
+
 
 instance Show CelWString where
-  show (CelWString ws) = show $ keepEvery 2 $ BSC.unpack ws
+  show (CelWString ws) = showWS ws
 
 celWString :: [Char] -> CelWString
-celWString s = CelWString $ BSC.pack $ '\0':(intersperse '\0' s)
-
-dropEvery n xs = [ i | (i, c) <- zip xs [0, 1 ..], (mod c n) /= n-1]
-keepEvery n xs = [ i | (i, c) <- zip xs [0, 1 ..], (mod c n) == n-1]
-
+celWString s = CelWString $ BSLC8.pack $ '\0':(intersperse '\0' s)
 
 
 {-
@@ -131,29 +135,32 @@ data CelMIMEType = CelMIMEPlainText | CelMIMEFloat  | CelMIMEAscii
                  | CelMIMEInt32     | CelMIMEInt16  | CelMIMEInt8
                  deriving (Show)
 
+typeLUTable =
+  [ (celWString "text/x-calvin-integer-8"           , CelMIMEInt8)
+  , (celWString "text/x-calvin-integer-16"          , CelMIMEInt16)
+  , (celWString "text/x-calvin-integer-32"          , CelMIMEInt32)
+  , (celWString "text/x-calvin-unsigned-integer-8"  , CelMIMEUInt8)
+  , (celWString "text/x-calvin-unsigned-integer-16" , CelMIMEUInt16)
+  , (celWString "text/x-calvin-unsigned-integer-32" , CelMIMEUInt32)
+  , (celWString "text/x-calvin-float"               , CelMIMEFloat)
+  , (celWString "text/ascii"                        , CelMIMEAscii)
+  , (celWString "text/plain"                        , CelMIMEPlainText)
+  ]
+
 parseMIMEType :: Get CelMIMEType
 parseMIMEType = do
   s <- parseCelWString
-  case (lookup s
-    [ (celWString "text/x-calvin-integer-8"          , CelMIMEInt8)
-    , (celWString "text/x-calvin-integer-16"         , CelMIMEInt16)
-    , (celWString "text/x-calvin-integer-32"         , CelMIMEInt32)
-    , (celWString "text/x-calvin-unsigned-integer-8" , CelMIMEUInt8)
-    , (celWString "text/x-calvin-unsigned-integer-16", CelMIMEUInt16)
-    , (celWString "text/x-calvin-unsigned-integer-32", CelMIMEUInt32)
-    , (celWString "text/x-calvin-float"              , CelMIMEFloat)
-    , (celWString "text/ascii"                       , CelMIMEAscii)
-    , (celWString "text/plain"                       , CelMIMEPlainText)
-    ]) of
+  case (lookup s typeLUTable) of
       Just t -> return t
-      _      -> return $ error $ show "undefined MIME type: " ++ show s
+      _      -> error $ show "undefined MIME type: " ++ show s
 
 
 newtype CelMIMEString = CelMIMEString { mimeString :: CelString }
 
 showMIMEString :: CelMIMEType -> CelMIMEString -> [Char]
 showMIMEString CelMIMEPlainText (CelMIMEString s) = 
-  show $ filter (/= '\0') $ keepEvery 2 $ BSC.unpack s
+  -- show $ filter (/= '\0') $ keepEvery 2 $ BSLC8.unpack s
+  showWS s
 showMIMEString CelMIMEInt8  (CelMIMEString s) =
   show $ runGet parseCelByte s
 showMIMEString CelMIMEUInt8  (CelMIMEString s) =
@@ -287,8 +294,9 @@ processCel cel = res
   where res = runGet parseCelFile cel
 
 main = do
-  cel <- BS.readFile "array.cel"
+  cel <- BSL.readFile "array.cel"
   return $ processCel cel
 
 
-test = BS.pack [0, 0, 0, 2, 0x30, 0x31, 0x32, 0x33]
+-- test = BSL.pack [0, 0, 0, 2, 0x30, 0x31, 0x32, 0x33]
+test =  BSL.pack [0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x00, 0x33]
