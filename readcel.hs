@@ -32,8 +32,7 @@ celString = BSLC8.pack
 lazyToStrict = BS.concat . BSL.toChunks
 showWS       = show . DTE.decodeUtf16BE . lazyToStrict
 
-data CelWString = CelWString { wstring :: BSL.ByteString } deriving (Eq)
-
+data CelWString = CelWString BSL.ByteString deriving (Eq)
 
 instance Show CelWString where
   show (CelWString ws) = showWS ws
