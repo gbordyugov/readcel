@@ -1,10 +1,7 @@
--- import qualified Data.ByteString.Lazy.UTF8 as BSU
-import qualified Data.Text                  as DT
-import qualified Data.Text.Encoding         as DTE
-import qualified Data.ByteString            as BS
-import qualified Data.ByteString.Lazy       as BSL
-import qualified Data.ByteString.Char8      as BSC8
-import qualified Data.ByteString.Lazy.Char8 as BSLC8
+import qualified Data.Text                 as DT
+import qualified Data.Text.Encoding        as DTE
+import qualified Data.Text.Lazy.Encoding   as DTLE
+import qualified Data.ByteString.Lazy      as BSL
 import Data.Binary.Get
 import Data.Binary.IEEE754
 import Data.Word
@@ -20,26 +17,21 @@ type CelInt      = Int32
 type CelUInt     = Word32
 type CelFloat    = Float
 type CelDouble   = Double
-type CelGUID     = CelString
-type CelDateTime = CelWString
-type CelLocale   = CelWString
+type CelGUID     = CelText
+type CelDateTime = CelText
+type CelLocale   = CelText
 type CelChar     = Word8
 type CelWChar    = Word16
 
 -- strings
-type CelString  = BSL.ByteString
-celString = BSLC8.pack
+type CelText = DT.Text
+celText = DT.pack
 
-lazyToStrict = BS.concat . BSL.toChunks
-showWS       = show . DTE.decodeUtf16BE . lazyToStrict
+-- type CelString  = DT.Text
+-- celString = DT.pack
 
-data CelWString = CelWString BSL.ByteString deriving (Eq)
-
-instance Show CelWString where
-  show (CelWString ws) = showWS ws
-
-celWString :: [Char] -> CelWString
-celWString s = CelWString $ BSLC8.pack $ '\0':(intersperse '\0' s)
+-- type CelWString = DT.Text
+-- celWString = DT.pack
 
 
 {-
@@ -65,40 +57,49 @@ parseCelUShort = getWord16be
 parseCelUInt :: Get CelUInt
 parseCelUInt = getWord32be
 
-parseCelString :: Get CelString
-parseCelString = do
+parseLazyByteString :: Int -> Get BSL.ByteString
+parseLazyByteString f = do
   len <- parseCelInt
-  s   <- getLazyByteString $ fromIntegral len
+  s   <- getLazyByteString $ (fromIntegral f)*(fromIntegral len)
   return s
 
-parseCelWString :: Get CelWString
-parseCelWString = do
+parseLazyByteStringFromString  = parseLazyByteString 1
+parseLazyByteStringFromWString = parseLazyByteString 2
+
+parseCelTextFromString :: Get CelText
+parseCelTextFromString = do
   len <- parseCelInt
-  s   <- getLazyByteString $ fromIntegral (2*len)
-  return $ CelWString s
+  s   <- getByteString $ fromIntegral len
+  return $ DT.takeWhile (/='\0') $ DTE.decodeUtf8 s
+
+parseCelTextFromWString :: Get CelText
+parseCelTextFromWString = do
+  len <- parseCelInt
+  s   <- getByteString $ fromIntegral (2*len)
+  return $ DT.takeWhile (/= '\0') $ DTE.decodeUtf16BE s
  
 parseCelGUID :: Get CelGUID
-parseCelGUID = parseCelString
+parseCelGUID = parseCelTextFromString
 
 parseCelDateTime :: Get CelDateTime
-parseCelDateTime = parseCelWString
+parseCelDateTime = parseCelTextFromWString
 
 parseCelLocale :: Get CelLocale
-parseCelLocale = parseCelWString
+parseCelLocale = parseCelTextFromWString
 
 parseNThings :: Get a -> Int -> Get [a]
 parseNThings parseThing n
   | n <= 0 = do
     return []
   | otherwise = do
-    thing  <- parseThing
-    things <- parseNThings parseThing $ fromIntegral n-1
-    return $ thing:things
+    t  <- parseThing
+    ts <- parseNThings parseThing $ fromIntegral n-1
+    return $ t:ts
 
 
-{-
- -
- - CelHeader
+{-  
+ -  
+ -   CelHeader
  -
  -}
 data CelHeader = CelHeader { magic       :: CelUByte
@@ -125,80 +126,47 @@ parseCelHeader = do
   return $ CelHeader magic version nGroups pos
 
 
-{-
- -
- - Cel MIME types
- -
- -}
-data CelMIMEType = CelMIMEPlainText | CelMIMEFloat  | CelMIMEAscii
-                 | CelMIMEUInt32    | CelMIMEUInt16 | CelMIMEUInt8
-                 | CelMIMEInt32     | CelMIMEInt16  | CelMIMEInt8
-                 deriving (Show)
+data CelParameter = CelMIMEPlainText DT.Text
+                  | CelMIMEFloat     Float
+                  | CelMIMEAscii     DT.Text
+                  | CelMIMEUInt8     Word8
+                  | CelMIMEUInt32    Word32
+                  | CelMIMEUInt16    Word16
+                  | CelMIMEInt8      Int8
+                  | CelMIMEInt16     Int16
+                  | CelMIMEInt32     Int32
+                    deriving (Show,Eq)
 
-typeLUTable =
-  [ (celWString "text/x-calvin-integer-8"           , CelMIMEInt8)
-  , (celWString "text/x-calvin-integer-16"          , CelMIMEInt16)
-  , (celWString "text/x-calvin-integer-32"          , CelMIMEInt32)
-  , (celWString "text/x-calvin-unsigned-integer-8"  , CelMIMEUInt8)
-  , (celWString "text/x-calvin-unsigned-integer-16" , CelMIMEUInt16)
-  , (celWString "text/x-calvin-unsigned-integer-32" , CelMIMEUInt32)
-  , (celWString "text/x-calvin-float"               , CelMIMEFloat)
-  , (celWString "text/ascii"                        , CelMIMEAscii)
-  , (celWString "text/plain"                        , CelMIMEPlainText)
-  ]
+data CelNamedParameter = CelNamedParameter DT.Text CelParameter
+                           deriving (Show, Eq)
 
-parseMIMEType :: Get CelMIMEType
-parseMIMEType = do
-  s <- parseCelWString
-  case (lookup s typeLUTable) of
-      Just t -> return t
-      _      -> error $ show "undefined MIME type: " ++ show s
+parseCelNamedParameter :: Get CelNamedParameter
+parseCelNamedParameter = do
+  n <- parseCelTextFromWString
+  v <- parseLazyByteStringFromString
+  t <- parseCelTextFromWString
+  case (DT.unpack t) of
+    "text/x-calvin-integer-8" ->
+      return $ CelNamedParameter n $ CelMIMEInt8 $ runGet getInt8 v
+    "text/x-calvin-integer-16" ->
+      return $ CelNamedParameter n $ CelMIMEInt16 $ runGet getInt16be v
+    "text/x-calvin-integer-32" ->
+      return $ CelNamedParameter n $ CelMIMEInt32 $ runGet getInt32be v
+    "text/x-calvin-unsigned-integer-8" ->
+      return $ CelNamedParameter n $ CelMIMEUInt8 $ runGet getWord8 v
+    "text/x-calvin-unsigned-integer-16" ->
+      return $ CelNamedParameter n $ CelMIMEUInt16 $ runGet getWord16be v
+    "text/x-calvin-unsigned-integer-32" ->
+      return $ CelNamedParameter n $ CelMIMEUInt32 $ runGet getWord32be v
+    "text/x-calvin-float"                ->
+      return $ CelNamedParameter n $ CelMIMEFloat $ runGet getFloat32be v
+    "text/ascii" ->
+      return $ CelNamedParameter n $ CelMIMEAscii $ DT.takeWhile (/='\0') $ DTE.decodeUtf8 $ BSL.toStrict v
+    "text/plain" ->
+      return $ CelNamedParameter n $ CelMIMEPlainText $ DT.takeWhile (/='\0') $ DTE.decodeUtf16BE $ BSL.toStrict v
+    _ -> error $ show "undefined MIME type: " ++ show t
 
-
-newtype CelMIMEString = CelMIMEString { mimeString :: CelString }
-
-showMIMEString :: CelMIMEType -> CelMIMEString -> [Char]
-showMIMEString CelMIMEPlainText (CelMIMEString s) = 
-  -- show $ filter (/= '\0') $ keepEvery 2 $ BSLC8.unpack s
-  showWS s
-showMIMEString CelMIMEInt8  (CelMIMEString s) =
-  show $ runGet parseCelByte s
-showMIMEString CelMIMEUInt8  (CelMIMEString s) =
-  show $ runGet parseCelUByte s
-showMIMEString CelMIMEInt16  (CelMIMEString s) =
-  show $ runGet parseCelShort s
-showMIMEString CelMIMEUInt16 (CelMIMEString s) =
-  show $ runGet parseCelUShort s
-showMIMEString CelMIMEInt32  (CelMIMEString s) =
-  show $ runGet parseCelInt s
-showMIMEString CelMIMEUInt32 (CelMIMEString s) =
-  show $ runGet parseCelUInt s
-showMIMEString CelMIMEFloat  (CelMIMEString s) =
-  show $ runGet getFloat32be s
-showMIMEString CelMIMEAscii  (CelMIMEString s) = show s
-
-{-
- -
- - Cel name/value/type triplet
- -
- -}
-data CelNVTTriplet = CelNVTTriplet { nvtName  :: CelWString
-                                   , nvtValue :: CelMIMEString
-                                   , nvtType  :: CelMIMEType
-                                   } 
-instance Show CelNVTTriplet where
-  show (CelNVTTriplet n v t) = "name: "  ++ show n             ++ ", " ++ 
-                               "value: " ++ showMIMEString t v ++ ", " ++
-                               "type: "  ++ show t
-
-parseCelNVTTriplet :: Get CelNVTTriplet
-parseCelNVTTriplet = do
-  name  <- parseCelWString
-  value <- parseCelString
-  typ   <- parseMIMEType
-  return $ CelNVTTriplet name (CelMIMEString value) typ
-
-parseCelNVTTriplets = parseNThings parseCelNVTTriplet 
+parseCelNamedParameters = parseNThings parseCelNamedParameter
 
 {-
  -
@@ -206,42 +174,41 @@ parseCelNVTTriplets = parseNThings parseCelNVTTriplet
  -
  -}
 
-data CelDataHeader = CelDataHeader { dataId   :: CelString
+data CelDataHeader = CelDataHeader { dataId   :: CelText
                                    , guId     :: CelGUID
                                    , datetime :: CelDateTime
                                    , locale   :: CelLocale
-                                   , nNVT     :: CelInt
-                                   , nvts     :: [CelNVTTriplet]
+                                   , nPars    :: CelInt
+                                   , pars     :: [CelNamedParameter]
                                    , nparents :: CelInt
                                    , parents  :: [CelDataHeader]
                                    }
 
 instance Show CelDataHeader where
-  show (CelDataHeader id guid dt locale nNVT nvts np ps) = 
-    "id:                 "  ++ show id     ++ "\n" ++
-    "guid:               "  ++ show guid   ++ "\n" ++
-    "date/time:          "  ++ show dt     ++ "\n" ++
-    "locale:             "  ++ show locale ++ "\n" ++
-    "no of nvt triplets: "  ++ show nNVT   ++ "\n" ++
-    -- "nvt triplets:     \n"  ++ showL nvts  ++ "\n" ++
-    "no of parents :     "  ++ show np     ++ "\n" ++
-    "parents:          \n"  ++ showL ps ++ "\n" 
-    -- ++ "end of " ++ show id ++ " data header"
+  show (CelDataHeader id guid dt locale nPars pars np ps) = 
+       "id:                 "  ++ show id     ++ "\n"
+    ++ "guid:               "  ++ show guid   ++ "\n"
+    ++ "date/time:          "  ++ show dt     ++ "\n"
+    ++ "locale:             "  ++ show locale ++ "\n"
+    ++ "no of nvt triplets: "  ++ show nPars  ++ "\n"
+    ++ "nvt triplets:     \n"  ++ show pars   ++ "\n"
+    ++ "no of parents :     "  ++ show np     ++ "\n"
+    ++ "parents:          \n"  ++ show ps     ++ "\n" 
 
 showL []     = "eol"
 showL (x:xs) = show x ++ "\n" ++ showL xs
 
 parseCelDataHeader :: Get CelDataHeader
 parseCelDataHeader = do
-  dataId   <- parseCelString
+  dataId   <- parseCelTextFromString
   guId     <- parseCelGUID
   datetime <- parseCelDateTime
   locale   <- parseCelLocale
-  nNVT     <- parseCelInt
-  nvts     <- parseCelNVTTriplets $ fromIntegral nNVT
+  nPars    <- parseCelInt
+  pars     <- parseCelNamedParameters $ fromIntegral nPars
   np       <- parseCelInt
   parents  <- parseCelDataHeaders $ fromIntegral np
-  return $ CelDataHeader dataId guId datetime locale nNVT nvts np parents
+  return $ CelDataHeader dataId guId datetime locale nPars pars np parents
 
 {-
  - still work in progress
@@ -252,7 +219,7 @@ parseCelDataHeaders= parseNThings parseCelDataHeader
 data CelDataGroup = CelDataGroup { posNextDataGroup :: CelUInt
                                  , posFirstDataSet  :: CelUInt
                                  , noDataSets       :: CelInt
-                                 , dgName           :: CelWString
+                                 , dgName           :: CelText
                                  }
 instance Show CelDataGroup where
   show (CelDataGroup np fp n name) = 
@@ -265,7 +232,7 @@ parseDataGroup = do
   np   <- parseCelUInt
   fp   <- parseCelUInt
   no   <- parseCelInt
-  name <- parseCelWString
+  name <- parseCelTextFromWString
   return $ CelDataGroup np fp no name
 
 
@@ -279,8 +246,8 @@ data CelFile = CelFile { celHeader  :: CelHeader
                        }
 
 instance Show CelFile where
-  show (CelFile h dh) = "Cel file header:\n" ++ show h ++
-                        "Cel data header:\n" ++ show dh -- ++
+  show (CelFile h dh) = "Cel file header:\n" ++ show h
+                     ++ "Cel data header:\n" ++ show dh -- ++
                            -- "Data group     :\n" ++ show dg
 
 parseCelFile :: Get CelFile
