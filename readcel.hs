@@ -1,4 +1,5 @@
 -- import qualified Data.ByteString.Lazy.UTF8 as BSU
+import qualified Data.Text                  as DT
 import qualified Data.Text.Encoding         as DTE
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as BSL
