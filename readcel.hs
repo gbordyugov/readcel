@@ -121,26 +121,26 @@ parseCelNamedParameter = do
   t <- parseCelTextFromWString
   case (DT.unpack t) of
     "text/x-calvin-integer-8" ->
-      return $ c n $ CelParameterInt8      $ runGet getInt8 v
+      return $ ctor n $ CelParameterInt8      $ runGet getInt8 v
     "text/x-calvin-integer-16" ->
-      return $ c n $ CelParameterInt16     $ runGet getInt16be v
+      return $ ctor n $ CelParameterInt16     $ runGet getInt16be v
     "text/x-calvin-integer-32" ->
-      return $ c n $ CelParameterInt32     $ runGet getInt32be v
+      return $ ctor n $ CelParameterInt32     $ runGet getInt32be v
     "text/x-calvin-unsigned-integer-8" ->
-      return $ c n $ CelParameterUInt8     $ runGet getWord8 v
+      return $ ctor n $ CelParameterUInt8     $ runGet getWord8 v
     "text/x-calvin-unsigned-integer-16" ->
-      return $ c n $ CelParameterUInt16    $ runGet getWord16be v
+      return $ ctor n $ CelParameterUInt16    $ runGet getWord16be v
     "text/x-calvin-unsigned-integer-32" ->
-      return $ c n $ CelParameterUInt32    $ runGet getWord32be v
+      return $ ctor n $ CelParameterUInt32    $ runGet getWord32be v
     "text/x-calvin-float" ->
-      return $ c n $ CelParameterFloat     $ runGet getFloat32be v
+      return $ ctor n $ CelParameterFloat     $ runGet getFloat32be v
     "text/ascii" ->
-      return $ c n $ CelParameterAscii     $ du8 v
+      return $ ctor n $ CelParameterAscii     $ du8 v
     "text/plain" ->
-      return $ c n $ CelParameterPlainText $ du16 v
+      return $ ctor n $ CelParameterPlainText $ du16 v
     _ -> error $ show "undefined MIME type: " ++ show t
     where
-      c    = CelNamedParameter
+      ctor = CelNamedParameter
       f    = DT.takeWhile (/='\0')
       du8  = f . DTE.decodeUtf8    . BSL.toStrict
       du16 = f . DTE.decodeUtf16BE . BSL.toStrict
