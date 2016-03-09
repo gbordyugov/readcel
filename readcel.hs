@@ -73,11 +73,10 @@ parseNThings parseThing n
  -   CelHeader
  -
  -}
-data CelHeader = CelHeader { magic       :: CelUByte
-                           , version     :: CelUByte
-                           , nDataGroups :: CelInt
-                           , fstGroupPos :: CelUInt
-                           }
+data CelHeader = CelHeader CelUByte -- magic
+                           CelUByte -- version
+                           CelInt   -- nDataGroups
+                           CelUInt  -- fstGroupPos
 
 instance Show CelHeader where
   show (CelHeader m v n f) =
@@ -153,15 +152,14 @@ parseCelNamedParameters = parseNThings parseCelNamedParameter
  -
  -}
 
-data CelDataHeader = CelDataHeader { dataId   :: CelText
-                                   , guId     :: CelGUID
-                                   , datetime :: CelDateTime
-                                   , locale   :: CelLocale
-                                   , nPars    :: CelInt
-                                   , pars     :: [CelNamedParameter]
-                                   , nparents :: CelInt
-                                   , parents  :: [CelDataHeader]
-                                   }
+data CelDataHeader = CelDataHeader CelText             -- dataId
+                                   CelGUID             -- guId
+                                   CelDateTime         -- datetime
+                                   CelLocale           -- locale
+                                   CelInt              -- nPars
+                                   [CelNamedParameter] -- pars
+                                   CelInt              -- nparents
+                                   [CelDataHeader]     -- parents
 
 instance Show CelDataHeader where
   show (CelDataHeader id guid dt locale nPars pars np ps) = 
@@ -173,9 +171,6 @@ instance Show CelDataHeader where
     ++ "nvt triplets:     \n"  ++ show pars   ++ "\n"
     ++ "no of parents :     "  ++ show np     ++ "\n"
     ++ "parents:          \n"  ++ show ps     ++ "\n" 
-
-showL []     = "eol"
-showL (x:xs) = show x ++ "\n" ++ showL xs
 
 parseCelDataHeader :: Get CelDataHeader
 parseCelDataHeader = do
@@ -193,13 +188,12 @@ parseCelDataHeader = do
  - still work in progress
  -}
 
-parseCelDataHeaders= parseNThings parseCelDataHeader
+parseCelDataHeaders = parseNThings parseCelDataHeader
 
-data CelDataGroup = CelDataGroup { posNextDataGroup :: CelUInt
-                                 , posFirstDataSet  :: CelUInt
-                                 , noDataSets       :: CelInt
-                                 , dgName           :: CelText
-                                 }
+data CelDataGroup = CelDataGroup CelUInt -- posNextDataGroup
+                                 CelUInt -- posFirstDataSet
+                                 CelInt  -- noDataSets
+                                 CelText -- dgName
 instance Show CelDataGroup where
   show (CelDataGroup np fp n name) = 
     "Data group:               " ++ show name ++ "\n" ++
@@ -214,6 +208,79 @@ parseDataGroup = do
   name <- parseCelTextFromWString
   return $ CelDataGroup np fp no name
 
+
+data CelValueType = CelValueTypeByte
+                  | CelValueTypeUByte
+                  | CelValueTypeShort
+                  | CelValueTypeUShort
+                  | CelValueTypeInt
+                  | CelValueTypeUInt
+                  | CelValueTypeFloat
+                  | CelValueTypeString
+                  | CelValueTypeWString
+                  deriving (Eq, Show)
+parseCelValueType = do
+  i <- parseCelByte
+  case i of
+    0 -> return CelValueTypeByte
+    1 -> return CelValueTypeUByte
+    2 -> return CelValueTypeShort
+    3 -> return CelValueTypeUShort
+    4 -> return CelValueTypeUInt
+    5 -> return CelValueTypeUInt
+    6 -> return CelValueTypeFloat
+    7 -> return CelValueTypeString
+    8 -> return CelValueTypeWString
+    _ -> error "strange type byte"
+
+data CelColumnName = CelColumnName CelText      -- column name
+                                   CelValueType -- volume type
+                                   CelInt       -- type size
+                                   deriving (Eq, Show)
+parseCelColumnName = do
+  n <- parseCelTextFromWString
+  t <- parseCelValueType
+  s <- parseCelInt
+  return $ CelColumnName n t s
+
+parseCelColumnNames = parseNThings parseCelColumnName
+
+-- not working yet
+data CelRow = CelRowByte    CelByte
+            | CelRowUByte   CelUByte
+            | CelRowShort   CelShort
+            | CelRowUShort  CelUShort
+            | CelRowInt     CelInt
+            | CelRowUInt    CelUInt
+            | CelRowFloat   CelFloat
+            | CelRowString  CelText
+            | CelRowWString CelText
+            deriving (Eq, Show)
+
+-- not working yet
+data CelDataSet = CelDataSet CelUInt             -- fPosFirstEle
+                             CelUInt             -- fPosNextDataSet
+                             CelText             -- name
+                             CelInt              -- nPars
+                             [CelNamedParameter] -- pars
+                             CelUInt             -- nCols
+                             [CelColumnName]     -- colNames
+                             CelUInt             -- nRows
+                             [CelRow]            -- data rows
+                             deriving (Eq, Show)
+
+-- not working yet
+parseCelDataSet = do
+  fp1   <- parseCelUInt
+  fpn   <- parseCelUInt
+  fpn   <- parseCelUInt
+  name  <- parseCelTextFromWString
+  nPar  <- parseCelInt
+  pars  <- parseCelNamedParameters $ fromIntegral nPar
+  nCol  <- parseCelUInt
+  cols  <- parseCelColumnNames $ fromIntegral nCol
+  nRows <- parseCelUInt 
+  return fp1 
 
 {-
  - end of work in progress
