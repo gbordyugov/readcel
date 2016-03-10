@@ -34,6 +34,7 @@ parseCelInt    = fromIntegral <$> getWord32be
 parseCelUByte  = getWord8
 parseCelUShort = getWord16be
 parseCelUInt   = getWord32be
+parseCelFloat  = getFloat32be
 
 parseGenericByteString parser charWidth = do
   len <- parseCelInt
@@ -105,7 +106,7 @@ data CelParameter = CelParameterPlainText DT.Text
                   | CelParameterInt8      Int8
                   | CelParameterInt16     Int16
                   | CelParameterInt32     Int32
-                    deriving (Show,Eq)
+                    deriving (Show, Eq)
 
 data CelNamedParameter = CelNamedParameter DT.Text CelParameter
                            deriving (Eq)
@@ -190,23 +191,26 @@ parseCelDataHeader = do
 
 parseCelDataHeaders = parseNThings parseCelDataHeader
 
-data CelDataGroup = CelDataGroup CelUInt -- posNextDataGroup
-                                 CelUInt -- posFirstDataSet
-                                 CelInt  -- noDataSets
-                                 CelText -- dgName
-instance Show CelDataGroup where
-  show (CelDataGroup np fp n name) = 
-    "Data group:               " ++ show name ++ "\n" ++
-    "no of data sets:          " ++ show n    ++ "\n" ++
-    "next data group position: " ++ show np   ++ "\n" ++
-    "first data set position:  " ++ show fp
+data CelDataGroup = CelDataGroup CelUInt    -- posNextDataGroup
+                                 CelUInt    -- posFirstDataSet
+                                 CelInt     -- noDataSets
+                                 CelText    -- dgName
+                                 CelDataSet -- data set
+                                 deriving (Show)
+-- instance Show CelDataGroup where
+--   show (CelDataGroup np fp n name) = 
+--     "Data group:               " ++ show name ++ "\n" ++
+--     "no of data sets:          " ++ show n    ++ "\n" ++
+--     "next data group position: " ++ show np   ++ "\n" ++
+--     "first data set position:  " ++ show fp
 
 parseDataGroup = do
   np   <- parseCelUInt
   fp   <- parseCelUInt
   no   <- parseCelInt
   name <- parseCelTextFromWString
-  return $ CelDataGroup np fp no name
+  ds   <- parseCelDataSet
+  return $ CelDataGroup np fp no name ds
 
 
 data CelValueType = CelValueTypeByte
@@ -218,7 +222,8 @@ data CelValueType = CelValueTypeByte
                   | CelValueTypeFloat
                   | CelValueTypeString
                   | CelValueTypeWString
-                  deriving (Eq, Show)
+                  deriving (Show)
+
 parseCelValueType = do
   i <- parseCelByte
   case i of
@@ -226,70 +231,119 @@ parseCelValueType = do
     1 -> return CelValueTypeUByte
     2 -> return CelValueTypeShort
     3 -> return CelValueTypeUShort
-    4 -> return CelValueTypeUInt
+    4 -> return CelValueTypeInt
     5 -> return CelValueTypeUInt
     6 -> return CelValueTypeFloat
     7 -> return CelValueTypeString
     8 -> return CelValueTypeWString
     _ -> error "strange type byte"
 
-data CelColumnName = CelColumnName CelText      -- column name
-                                   CelValueType -- volume type
-                                   CelInt       -- type size
-                                   deriving (Eq, Show)
-parseCelColumnName = do
+data CelColumnDescription = CelColumnDescription CelText -- column name
+                                   CelValueType          -- volume type
+                                   CelInt                -- type size
+                                   deriving (Show)
+parseCelColumnDescription = do
   n <- parseCelTextFromWString
   t <- parseCelValueType
   s <- parseCelInt
-  return $ CelColumnName n t s
+  return $ CelColumnDescription n t s
 
-parseCelColumnNames = parseNThings parseCelColumnName
+parseCelColumnDescriptions = parseNThings parseCelColumnDescription
 
--- not working yet
-data CelRow = CelRowByte    CelByte
-            | CelRowUByte   CelUByte
-            | CelRowShort   CelShort
-            | CelRowUShort  CelUShort
-            | CelRowInt     CelInt
-            | CelRowUInt    CelUInt
-            | CelRowFloat   CelFloat
-            | CelRowString  CelText
-            | CelRowWString CelText
-            deriving (Eq, Show)
+data CelDataSet = CelDataSet CelUInt                -- fPosFirstEle
+                             CelUInt                -- fPosNextDataSet
+                             CelText                -- name
+                             CelInt                 -- nPars
+                             [CelNamedParameter]    -- pars
+                             CelUInt                -- nCols
+                             [CelColumnDescription] -- colNames
+                             CelUInt                -- nRows
+                             CelDataRows            -- rows
+                             deriving (Show)
+-- instance Show CelDataSet where
+--   show (CelDataSet fp1 fp1 name npars pars ncols cols nrows rows) = 
+--     "Data Set:                 " ++ show name ++ "\n" ++
+--     "file position of the first element:          " ++ show n    ++ "\n" ++
+--     "next data group position: " ++ show np   ++ "\n" ++
+--     "first data set position:  " ++ show fp
+    
 
--- not working yet
-data CelDataSet = CelDataSet CelUInt             -- fPosFirstEle
-                             CelUInt             -- fPosNextDataSet
-                             CelText             -- name
-                             CelInt              -- nPars
-                             [CelNamedParameter] -- pars
-                             CelUInt             -- nCols
-                             [CelColumnName]     -- colNames
-                             CelUInt             -- nRows
-                             [CelRow]            -- data rows
-                             deriving (Eq, Show)
-
--- not working yet
 parseCelDataSet = do
   fp1   <- parseCelUInt
-  fpn   <- parseCelUInt
   fpn   <- parseCelUInt
   name  <- parseCelTextFromWString
   nPar  <- parseCelInt
   pars  <- parseCelNamedParameters $ fromIntegral nPar
   nCol  <- parseCelUInt
-  cols  <- parseCelColumnNames $ fromIntegral nCol
+  cols  <- parseCelColumnDescriptions $ fromIntegral nCol
   nRows <- parseCelUInt 
-  return fp1 
+  dta   <- parseCelDataRaws cols $ fromIntegral nRows
+  return $ CelDataSet fp1 fpn name nPar pars nCol cols nRows $ CelDataRows dta
+
+data CelDataValue = CelDataByte   CelByte
+                  | CelDataUByte  CelUByte
+                  | CelDataShort  CelShort
+                  | CelDataUShort CelUShort
+                  | CelDataInt    CelInt
+                  | CelDataUInt   CelUInt
+                  | CelDataFloat  CelFloat
+                  | CelDataText   CelText
+                  deriving (Eq, Show)
+
+type CelDataRow = [CelDataValue]
+data CelDataRows = CelDataRows [CelDataRow]
+
+instance Show CelDataRows where
+  show (CelDataRows [])   = "[]"
+  show (CelDataRows (x:xs)) = show x ++ " ..."
+
+parseCelDataValue (CelColumnDescription _ t s) = do
+  case t of
+    CelValueTypeByte    -> do
+      b <- parseCelByte
+      return $ CelDataByte b
+    CelValueTypeUByte   -> do
+      b <- parseCelUByte
+      return $ CelDataUByte b
+    CelValueTypeShort   -> do
+      b <- parseCelShort
+      return $ CelDataShort b
+    CelValueTypeUShort  -> do
+      b <- parseCelUShort
+      return $ CelDataUShort b
+    CelValueTypeInt     -> do
+      b <- parseCelInt
+      return $ CelDataInt b
+    CelValueTypeUInt    -> do
+      b <- parseCelUInt
+      return $ CelDataUInt b
+    CelValueTypeFloat   -> do
+      b <- parseCelFloat
+      return $ CelDataFloat b
+    CelValueTypeString  -> do
+      b <- parseCelTextFromString
+      return $ CelDataText b
+    CelValueTypeWString -> do
+      b <- parseCelTextFromWString
+      return $ CelDataText b
+
+parseCelDataValues []     = do
+  return []
+parseCelDataValues (d:ds) = do
+  v  <- parseCelDataValue  d
+  vs <- parseCelDataValues ds
+  return $ v:vs
+
+parseCelDataRaw  = parseCelDataValues
+parseCelDataRaws ds = parseNThings (parseCelDataRaw ds)
 
 {-
  - end of work in progress
  -}
 
-data CelFile = CelFile { celHeader  :: CelHeader
-                       , dataHeader :: CelDataHeader
-                       , dg         :: CelDataGroup
-                       }
+data CelFile = CelFile CelHeader
+                       CelDataHeader
+                       CelDataGroup
 
 instance Show CelFile where
   show (CelFile h dh dg) = "Cel file header:\n" ++ show h
