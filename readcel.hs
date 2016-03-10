@@ -303,9 +303,6 @@ parseCelDataValues (d:ds) = do
 parseCelDataRaw  = parseCelDataValues
 parseCelDataRaws ds = parseNThings (parseCelDataRaw ds)
 
-{-
- - end of work in progress
- -}
 
 data CelFile = CelFile CelHeader
                        CelDataHeader
