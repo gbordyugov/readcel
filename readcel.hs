@@ -23,11 +23,6 @@ type CelWChar    = Word16
 type CelText     = DT.Text
 celText = DT.pack
 
-{-
- -
- - primitive parsers of basic Cel types
- -
- -}
 parseCelByte   = fromIntegral <$> getWord8
 parseCelShort  = fromIntegral <$> getWord16be
 parseCelInt    = fromIntegral <$> getWord32be
@@ -69,11 +64,6 @@ parseNThings parseThing n
     return $ t:ts
 
 
-{-  
- -  
- -   CelHeader
- -
- -}
 data CelHeader = CelHeader CelUByte -- magic
                            CelUByte -- version
                            CelInt   -- nDataGroups
@@ -147,12 +137,6 @@ parseCelNamedParameter = do
 
 parseCelNamedParameters = parseNThings parseCelNamedParameter
 
-{-
- -
- - Cel data header
- -
- -}
-
 data CelDataHeader = CelDataHeader CelText             -- dataId
                                    CelGUID             -- guId
                                    CelDateTime         -- datetime
@@ -185,10 +169,6 @@ parseCelDataHeader = do
   parents  <- parseCelDataHeaders $ fromIntegral np
   return $ CelDataHeader dataId guId datetime locale nPars pars np parents
 
-{-
- - still work in progress
- -}
-
 parseCelDataHeaders = parseNThings parseCelDataHeader
 
 data CelDataGroup = CelDataGroup CelUInt    -- posNextDataGroup
@@ -197,13 +177,6 @@ data CelDataGroup = CelDataGroup CelUInt    -- posNextDataGroup
                                  CelText    -- dgName
                                  CelDataSet -- data set
                                  deriving (Show)
--- instance Show CelDataGroup where
---   show (CelDataGroup np fp n name) = 
---     "Data group:               " ++ show name ++ "\n" ++
---     "no of data sets:          " ++ show n    ++ "\n" ++
---     "next data group position: " ++ show np   ++ "\n" ++
---     "first data set position:  " ++ show fp
-
 parseDataGroup = do
   np   <- parseCelUInt
   fp   <- parseCelUInt
@@ -260,13 +233,6 @@ data CelDataSet = CelDataSet CelUInt                -- fPosFirstEle
                              CelUInt                -- nRows
                              CelDataRows            -- rows
                              deriving (Show)
--- instance Show CelDataSet where
---   show (CelDataSet fp1 fp1 name npars pars ncols cols nrows rows) = 
---     "Data Set:                 " ++ show name ++ "\n" ++
---     "file position of the first element:          " ++ show n    ++ "\n" ++
---     "next data group position: " ++ show np   ++ "\n" ++
---     "first data set position:  " ++ show fp
-    
 
 parseCelDataSet = do
   fp1   <- parseCelUInt
