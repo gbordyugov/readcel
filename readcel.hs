@@ -64,6 +64,10 @@ parseNThings parseThing n
     return $ t:ts
 
 
+skipTo p = do
+  br <- bytesRead
+  skip $ (fromIntegral p) - (fromIntegral br)
+
 data CelHeader = CelHeader CelUByte -- magic
                            CelUByte -- version
                            CelInt   -- nDataGroups
@@ -171,19 +175,28 @@ parseCelDataHeader = do
 
 parseCelDataHeaders = parseNThings parseCelDataHeader
 
-data CelDataGroup = CelDataGroup CelUInt    -- posNextDataGroup
-                                 CelUInt    -- posFirstDataSet
-                                 CelInt     -- noDataSets
-                                 CelText    -- dgName
-                                 CelDataSet -- data set
+data CelDataGroup = CelDataGroup CelUInt      -- posNextDataGroup
+                                 CelUInt      -- posFirstDataSet
+                                 CelInt       -- no of data sets
+                                 CelText      -- name
+                                 [CelDataSet] -- data sets
                                  deriving (Show)
-parseDataGroup = do
-  np   <- parseCelUInt
-  fp   <- parseCelUInt
-  no   <- parseCelInt
-  name <- parseCelTextFromWString
-  ds   <- parseCelDataSet
-  return $ CelDataGroup np fp no name ds
+parseCelDataGroup = do
+  np    <- parseCelUInt
+  fp    <- parseCelUInt
+  nSets <- parseCelInt
+  name  <- parseCelTextFromWString
+  ds    <- parseCelDataSets $ fromIntegral nSets
+  return $ CelDataGroup np fp nSets name ds
+
+parseCelDataGroups 0 = return $ []
+parseCelDataGroups n = do
+  g@(CelDataGroup pos _ _ _ _) <- parseCelDataGroup
+  skipTo pos
+  gs <- parseCelDataGroups (n - 1)
+  return $ g:gs
+
+
 
 
 data CelValueType = CelValueTypeByte
@@ -244,7 +257,16 @@ parseCelDataSet = do
   cols  <- parseCelColumnDescriptions $ fromIntegral nCol
   nRows <- parseCelUInt 
   dta   <- parseCelDataRaws cols $ fromIntegral nRows
-  return $ CelDataSet fp1 fpn name nPar pars nCol cols nRows $ CelDataRows dta
+  return $
+    CelDataSet fp1 fpn name nPar pars nCol cols nRows $ CelDataRows dta
+
+parseCelDataSets 0 = return $ []
+parseCelDataSets n = do
+  d@(CelDataSet _ pos _ _ _ _ _ _ _) <- parseCelDataSet
+  skipTo pos
+  ds <- parseCelDataSets (n - 1)
+  return $ d:ds
+
 
 data CelDataValue = CelDataByte   CelByte
                   | CelDataUByte  CelUByte
@@ -261,7 +283,7 @@ data CelDataRows = CelDataRows [CelDataRow]
 
 instance Show CelDataRows where
   show (CelDataRows [])   = "[]"
-  show (CelDataRows (x:xs)) = show x ++ " ..."
+  show (CelDataRows (x:xs)) = show x ++ " ... (more " ++ show (length xs) ++ " data pieces follow)"
 
 parseCelDataValue (CelColumnDescription _ t s) = do
   case t of
@@ -306,7 +328,7 @@ parseCelDataRaws ds = parseNThings (parseCelDataRaw ds)
 
 data CelFile = CelFile CelHeader
                        CelDataHeader
-                       CelDataGroup
+                       [CelDataGroup]
 
 instance Show CelFile where
   show (CelFile h dh dg) = "Cel file header:\n" ++ show h
@@ -315,10 +337,11 @@ instance Show CelFile where
 
 parseCelFile :: Get CelFile
 parseCelFile = do
-  h  <- parseCelHeader
+  h@(CelHeader _ _ n pos)  <- parseCelHeader
   dh <- parseCelDataHeader
-  dg <- parseDataGroup
-  return $ CelFile h dh dg
+  gs <- parseCelDataGroups n
+  skipTo pos
+  return $ CelFile h dh gs
 
 
 processCel cel = res
@@ -327,7 +350,3 @@ processCel cel = res
 main = do
   cel <- BSL.readFile "array.cel"
   return $ processCel cel
-
-
--- test = BSL.pack [0, 0, 0, 2, 0x30, 0x31, 0x32, 0x33]
-test =  BSL.pack [0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x00, 0x33]
