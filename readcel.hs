@@ -68,10 +68,30 @@ skipTo p = do
   br <- bytesRead
   skip $ (fromIntegral p) - (fromIntegral br)
 
+tr = "<tr>"
+td = "<td>"
+trc = "</tr>"
+tdc = "</td>"
+tab  = "<table>"
+tabc = "</table>"
+
+class HTMLable a where
+  toHTML :: a -> String
+
+{-
+instance HTMLable [] where
+  toHTML xs = tabc
+    ++ tr
+    ++ trc
+    ++ tabc
+-}
+
 data CelHeader = CelHeader CelUByte -- magic
                            CelUByte -- version
                            CelInt   -- nDataGroups
                            CelUInt  -- fstGroupPos
+nameValueHTML :: String -> String -> String
+nameValueHTML n v = tr ++ td ++ n ++ tdc ++ td ++ v ++ tdc ++ trc
 
 instance Show CelHeader where
   show (CelHeader m v n f) =
@@ -80,6 +100,15 @@ instance Show CelHeader where
     "no. of data groups           " ++ show n ++ "\n" ++
     "position of the first group: " ++ show f ++ "\n"
 
+instance HTMLable CelHeader where
+  toHTML (CelHeader m v n p) = 
+    "<h3>CelHeader</h3>"
+    ++ tab
+    ++ (nameValueHTML "magic number"       $ show m)
+    ++ (nameValueHTML "version"            $ show v)
+    ++ (nameValueHTML "no. of data groups" $ show n)
+    ++ (nameValueHTML "pos of 1st group"   $ show p)
+    ++ tabc
                                   
 
 parseCelHeader :: Get CelHeader
@@ -107,6 +136,10 @@ data CelNamedParameter = CelNamedParameter DT.Text CelParameter
 
 instance Show CelNamedParameter where
   show (CelNamedParameter t p) = show t ++ ": " ++ show p
+
+instance HTMLable CelNamedParameter where
+  toHTML (CelNamedParameter t p) =
+    tab ++ (nameValueHTML (DT.unpack t) (show p)) ++ tabc
 
 parseCelNamedParameter :: Get CelNamedParameter
 parseCelNamedParameter = do
@@ -139,6 +172,12 @@ parseCelNamedParameter = do
       du8  = f . DTE.decodeUtf8    . BSL.toStrict
       du16 = f . DTE.decodeUtf16BE . BSL.toStrict
 
+      -- emulate later versions of Data.Binary.Get
+      getInt8        = fromIntegral <$> getWord8
+      getInt16be     = fromIntegral <$> getWord16be
+      getInt32be     = fromIntegral <$> getWord32be
+
+
 parseCelNamedParameters = parseNThings parseCelNamedParameter
 
 data CelDataHeader = CelDataHeader CelText             -- dataId
@@ -160,6 +199,19 @@ instance Show CelDataHeader where
     ++ "nvt triplets:     \n"  ++ show pars   ++ "\n"
     ++ "no of parents :     "  ++ show np     ++ "\n"
     ++ "parents:          \n"  ++ show ps     ++ "\n" 
+
+instance HTMLable CelDataHeader where
+  toHTML (CelDataHeader did guid dt l npars pars nparents parents) = 
+    "<h3>CelDataHeader</h3>"
+    ++ tab
+    ++ (nameValueHTML "data id"           $ DT.unpack did)
+    ++ (nameValueHTML "guid"              $ DT.unpack guid)
+    ++ (nameValueHTML "date/time"         $ DT.unpack dt)
+    ++ (nameValueHTML "locale"            $ DT.unpack l)
+    ++ (nameValueHTML "no. of parameters" $ show npars)
+    ++ (nameValueHTML "parameters"        $ concat $ map toHTML pars)
+    ++ (nameValueHTML "no. of parents "   $ show nparents)
+    ++ tabc
 
 parseCelDataHeader :: Get CelDataHeader
 parseCelDataHeader = do
@@ -348,5 +400,10 @@ processCel cel = res
   where res = runGet parseCelFile cel
 
 main = do
-  cel <- BSL.readFile "array.cel"
-  return $ processCel cel
+  f <- BSL.readFile "array.cel"
+  let c@(CelFile h d g) = processCel f in
+    do
+    -- print $ toHTML h
+    -- print $ toHTML d
+    print c
+    return c
