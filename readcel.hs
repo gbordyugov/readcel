@@ -1,11 +1,13 @@
+import           Control.Applicative ((<$>))
+import           Data.Maybe          (fromJust)
 import qualified Data.Text                 as DT
 import qualified Data.Text.Encoding        as DTE
 import qualified Data.ByteString.Lazy      as BSL
-import Data.Binary.Get
-import Data.Binary.IEEE754
-import Data.Word
-import Data.Char
-import Data.Int
+import           Data.Binary.Get
+import           Data.Binary.IEEE754
+import           Data.Word
+import           Data.Char
+import           Data.Int
 
 type CelByte     = Int8
 type CelUByte    = Word8
@@ -21,6 +23,7 @@ type CelLocale   = CelText
 type CelChar     = Word8
 type CelWChar    = Word16
 type CelText     = DT.Text
+
 celText = DT.pack
 
 parseCelByte   = fromIntegral <$> getWord8
@@ -54,44 +57,23 @@ parseCelGUID     = parseCelTextFromString
 parseCelDateTime = parseCelTextFromWString
 parseCelLocale   = parseCelTextFromWString
 
+
 parseNThings :: Get a -> Int -> Get [a]
-parseNThings parseThing n
-  | n <= 0 = do
-    return []
-  | otherwise = do
-    t  <- parseThing
-    ts <- parseNThings parseThing $ fromIntegral n-1
-    return $ t:ts
+parseNThings parseThing 0 = do return []
+parseNThings parseThing n = do
+  t  <- parseThing
+  ts <- parseNThings parseThing $ fromIntegral n - 1
+  return $ t:ts
 
 
 skipTo p = do
   br <- bytesRead
   skip $ (fromIntegral p) - (fromIntegral br)
 
-tr = "<tr>"
-td = "<td>"
-trc = "</tr>"
-tdc = "</td>"
-tab  = "<table>"
-tabc = "</table>"
-
-class HTMLable a where
-  toHTML :: a -> String
-
-{-
-instance HTMLable [] where
-  toHTML xs = tabc
-    ++ tr
-    ++ trc
-    ++ tabc
--}
-
 data CelHeader = CelHeader CelUByte -- magic
                            CelUByte -- version
                            CelInt   -- nDataGroups
                            CelUInt  -- fstGroupPos
-nameValueHTML :: String -> String -> String
-nameValueHTML n v = tr ++ td ++ n ++ tdc ++ td ++ v ++ tdc ++ trc
 
 instance Show CelHeader where
   show (CelHeader m v n f) =
@@ -99,17 +81,6 @@ instance Show CelHeader where
     "version:                     " ++ show v ++ "\n" ++
     "no. of data groups           " ++ show n ++ "\n" ++
     "position of the first group: " ++ show f ++ "\n"
-
-instance HTMLable CelHeader where
-  toHTML (CelHeader m v n p) = 
-    "<h3>CelHeader</h3>"
-    ++ tab
-    ++ (nameValueHTML "magic number"       $ show m)
-    ++ (nameValueHTML "version"            $ show v)
-    ++ (nameValueHTML "no. of data groups" $ show n)
-    ++ (nameValueHTML "pos of 1st group"   $ show p)
-    ++ tabc
-                                  
 
 parseCelHeader :: Get CelHeader
 parseCelHeader = do
@@ -137,10 +108,6 @@ data CelNamedParameter = CelNamedParameter DT.Text CelParameter
 instance Show CelNamedParameter where
   show (CelNamedParameter t p) = show t ++ ": " ++ show p
 
-instance HTMLable CelNamedParameter where
-  toHTML (CelNamedParameter t p) =
-    tab ++ (nameValueHTML (DT.unpack t) (show p)) ++ tabc
-
 parseCelNamedParameter :: Get CelNamedParameter
 parseCelNamedParameter = do
   n <- parseCelTextFromWString
@@ -165,7 +132,7 @@ parseCelNamedParameter = do
       return $ ctor n $ CelParameterAscii     $ du8 v
     "text/plain" ->
       return $ ctor n $ CelParameterPlainText $ du16 v
-    _ -> error $ show "undefined MIME type: " ++ show t
+    _ -> error $ "undefined MIME type: " ++ show t
     where
       ctor = CelNamedParameter
       f    = DT.takeWhile (/='\0')
@@ -200,19 +167,6 @@ instance Show CelDataHeader where
     ++ "no of parents :     "  ++ show np     ++ "\n"
     ++ "parents:          \n"  ++ show ps     ++ "\n" 
 
-instance HTMLable CelDataHeader where
-  toHTML (CelDataHeader did guid dt l npars pars nparents parents) = 
-    "<h3>CelDataHeader</h3>"
-    ++ tab
-    ++ (nameValueHTML "data id"           $ DT.unpack did)
-    ++ (nameValueHTML "guid"              $ DT.unpack guid)
-    ++ (nameValueHTML "date/time"         $ DT.unpack dt)
-    ++ (nameValueHTML "locale"            $ DT.unpack l)
-    ++ (nameValueHTML "no. of parameters" $ show npars)
-    ++ (nameValueHTML "parameters"        $ concat $ map toHTML pars)
-    ++ (nameValueHTML "no. of parents "   $ show nparents)
-    ++ tabc
-
 parseCelDataHeader :: Get CelDataHeader
 parseCelDataHeader = do
   dataId   <- parseCelTextFromString
@@ -245,7 +199,7 @@ parseCelDataGroups 0 = return $ []
 parseCelDataGroups n = do
   g@(CelDataGroup pos _ _ _ _) <- parseCelDataGroup
   skipTo pos
-  gs <- parseCelDataGroups (n - 1)
+  gs <- parseCelDataGroups $ n - 1
   return $ g:gs
 
 
@@ -262,19 +216,20 @@ data CelValueType = CelValueTypeByte
                   | CelValueTypeWString
                   deriving (Show)
 
-parseCelValueType = do
-  i <- parseCelByte
-  case i of
-    0 -> return CelValueTypeByte
-    1 -> return CelValueTypeUByte
-    2 -> return CelValueTypeShort
-    3 -> return CelValueTypeUShort
-    4 -> return CelValueTypeInt
-    5 -> return CelValueTypeUInt
-    6 -> return CelValueTypeFloat
-    7 -> return CelValueTypeString
-    8 -> return CelValueTypeWString
-    _ -> error "strange type byte"
+parseCelValueType =
+  let lut = [ (0, CelValueTypeByte)
+            , (1, CelValueTypeUByte)
+            , (2, CelValueTypeShort)
+            , (3, CelValueTypeUShort)
+            , (4, CelValueTypeInt)
+            , (5, CelValueTypeUInt)
+            , (6, CelValueTypeFloat)
+            , (7, CelValueTypeString)
+            , (8, CelValueTypeWString) ]
+  in do
+    i <- parseCelByte
+    return $ fromJust $ lookup i lut
+
 
 data CelColumnDescription = CelColumnDescription CelText -- column name
                                    CelValueType          -- volume type
@@ -335,7 +290,8 @@ data CelDataRows = CelDataRows [CelDataRow]
 
 instance Show CelDataRows where
   show (CelDataRows [])   = "[]"
-  show (CelDataRows (x:xs)) = show x ++ " ... (more " ++ show (length xs) ++ " data pieces follow)"
+  -- show (CelDataRows (x:xs)) = show x ++ " ... (more " ++ show (length xs) ++ " data pieces follow)"
+  show (CelDataRows (x:xs)) = show x ++ " ... (more data pieces follow)"
 
 parseCelDataValue (CelColumnDescription _ t s) = do
   case t of
@@ -367,8 +323,26 @@ parseCelDataValue (CelColumnDescription _ t s) = do
       b <- parseCelTextFromWString
       return $ CelDataText b
 
-parseCelDataValues []     = do
-  return []
+-- data Parser = P a
+-- parseCelDataValue' (CelColumnDescription _ t s) = let 
+--   lut =
+--     [(CelValueTypeByte   , (parseCelByte           , CelDataByte))
+--     ,(CelValueTypeUByte  , (parseCelUByte          , CelDataUByte))
+--     ,(CelValueTypeShort  , (parseCelShort          , CelDataShort))
+--     ,(CelValueTypeUShort , (parseCelUShort         , CelDataUShort))
+--     ,(CelValueTypeInt    , (parseCelInt            , CelDataInt))
+--     ,(CelValueTypeUInt   , (parseCelUInt           , CelDataUInt))
+--     ,(CelValueTypeFloat  , (parseCelFloat          , CelDataFloat))
+--     ,(CelValueTypeString , (parseCelTextFromString , CelDataText))
+--     ,(CelValueTypeWString, (parseCelTextFromWString, CelDataText))
+--     ]
+--   (parser, ctor) = fromJust $ lookup t lut
+--   in do
+--     b <- parser
+--     return $ ctor b
+
+
+parseCelDataValues []     = do return []
 parseCelDataValues (d:ds) = do
   v  <- parseCelDataValue  d
   vs <- parseCelDataValues ds
@@ -403,7 +377,5 @@ main = do
   f <- BSL.readFile "array.cel"
   let c@(CelFile h d g) = processCel f in
     do
-    -- print $ toHTML h
-    -- print $ toHTML d
-    print c
+    -- print c
     return c
