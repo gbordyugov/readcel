@@ -214,21 +214,12 @@ data CelValueType = CelValueTypeByte
                   | CelValueTypeFloat
                   | CelValueTypeString
                   | CelValueTypeWString
-                  deriving (Show)
+                  deriving (Show, Enum)
 
-parseCelValueType =
-  let lut = [ (0, CelValueTypeByte)
-            , (1, CelValueTypeUByte)
-            , (2, CelValueTypeShort)
-            , (3, CelValueTypeUShort)
-            , (4, CelValueTypeInt)
-            , (5, CelValueTypeUInt)
-            , (6, CelValueTypeFloat)
-            , (7, CelValueTypeString)
-            , (8, CelValueTypeWString) ]
-  in do
-    i <- parseCelByte
-    return $ fromJust $ lookup i lut
+parseCelValueType :: Get CelValueType
+parseCelValueType = do
+  i <- parseCelByte
+  return $ toEnum $ fromIntegral i
 
 
 data CelColumnDescription = CelColumnDescription CelText -- column name
