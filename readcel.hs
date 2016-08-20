@@ -205,25 +205,21 @@ parseCelDataGroups n = do
 
 
 
-data CelValueType = CelValueTypeByte
-                  | CelValueTypeUByte
-                  | CelValueTypeShort
-                  | CelValueTypeUShort
-                  | CelValueTypeInt
-                  | CelValueTypeUInt
-                  | CelValueTypeFloat
-                  | CelValueTypeString
-                  | CelValueTypeWString
-                  deriving (Show, Enum)
+data CelDataValueType = CelValueTypeByte
+                      | CelValueTypeUByte
+                      | CelValueTypeShort
+                      | CelValueTypeUShort
+                      | CelValueTypeInt
+                      | CelValueTypeUInt
+                      | CelValueTypeFloat
+                      | CelValueTypeString
+                      | CelValueTypeWString
+                        deriving (Show, Enum)
 
-parseCelValueType :: Get CelValueType
-parseCelValueType = do
-  i <- parseCelByte
-  return $ toEnum $ fromIntegral i
-
+parseCelValueType = toEnum . fromIntegral <$> parseCelByte
 
 data CelColumnDescription = CelColumnDescription CelText -- column name
-                                   CelValueType          -- volume type
+                                   CelDataValueType      -- value type
                                    CelInt                -- type size
                                    deriving (Show)
 parseCelColumnDescription = do
@@ -254,7 +250,7 @@ parseCelDataSet = do
   nCol  <- parseCelUInt
   cols  <- parseCelColumnDescriptions $ fromIntegral nCol
   nRows <- parseCelUInt 
-  dta   <- parseCelDataRaws cols $ fromIntegral nRows
+  dta   <- parseCelDataRows cols $ fromIntegral nRows
   return $
     CelDataSet fp1 fpn name nPar pars nCol cols nRows $ CelDataRows dta
 
@@ -262,7 +258,7 @@ parseCelDataSets 0 = return $ []
 parseCelDataSets n = do
   d@(CelDataSet _ pos _ _ _ _ _ _ _) <- parseCelDataSet
   skipTo pos
-  ds <- parseCelDataSets (n - 1)
+  ds <- parseCelDataSets $ n - 1
   return $ d:ds
 
 
@@ -274,7 +270,7 @@ data CelDataValue = CelDataByte   CelByte
                   | CelDataUInt   CelUInt
                   | CelDataFloat  CelFloat
                   | CelDataText   CelText
-                  deriving (Eq, Show)
+                    deriving (Eq, Show)
 
 type CelDataRow = [CelDataValue]
 data CelDataRows = CelDataRows [CelDataRow]
@@ -284,63 +280,26 @@ instance Show CelDataRows where
   -- show (CelDataRows (x:xs)) = show x ++ " ... (more " ++ show (length xs) ++ " data pieces follow)"
   show (CelDataRows (x:xs)) = show x ++ " ... (more data pieces follow)"
 
-parseCelDataValue (CelColumnDescription _ t s) = do
+parseCelDataValue t =
   case t of
-    CelValueTypeByte    -> do
-      b <- parseCelByte
-      return $ CelDataByte b
-    CelValueTypeUByte   -> do
-      b <- parseCelUByte
-      return $ CelDataUByte b
-    CelValueTypeShort   -> do
-      b <- parseCelShort
-      return $ CelDataShort b
-    CelValueTypeUShort  -> do
-      b <- parseCelUShort
-      return $ CelDataUShort b
-    CelValueTypeInt     -> do
-      b <- parseCelInt
-      return $ CelDataInt b
-    CelValueTypeUInt    -> do
-      b <- parseCelUInt
-      return $ CelDataUInt b
-    CelValueTypeFloat   -> do
-      b <- parseCelFloat
-      return $ CelDataFloat b
-    CelValueTypeString  -> do
-      b <- parseCelTextFromString
-      return $ CelDataText b
-    CelValueTypeWString -> do
-      b <- parseCelTextFromWString
-      return $ CelDataText b
-
--- data Parser = P a
--- parseCelDataValue' (CelColumnDescription _ t s) = let 
---   lut =
---     [(CelValueTypeByte   , (parseCelByte           , CelDataByte))
---     ,(CelValueTypeUByte  , (parseCelUByte          , CelDataUByte))
---     ,(CelValueTypeShort  , (parseCelShort          , CelDataShort))
---     ,(CelValueTypeUShort , (parseCelUShort         , CelDataUShort))
---     ,(CelValueTypeInt    , (parseCelInt            , CelDataInt))
---     ,(CelValueTypeUInt   , (parseCelUInt           , CelDataUInt))
---     ,(CelValueTypeFloat  , (parseCelFloat          , CelDataFloat))
---     ,(CelValueTypeString , (parseCelTextFromString , CelDataText))
---     ,(CelValueTypeWString, (parseCelTextFromWString, CelDataText))
---     ]
---   (parser, ctor) = fromJust $ lookup t lut
---   in do
---     b <- parser
---     return $ ctor b
-
+    CelValueTypeByte    -> CelDataByte   <$> parseCelByte
+    CelValueTypeUByte   -> CelDataUByte  <$> parseCelUByte
+    CelValueTypeShort   -> CelDataShort  <$> parseCelShort
+    CelValueTypeUShort  -> CelDataUShort <$> parseCelUShort
+    CelValueTypeInt     -> CelDataInt    <$> parseCelInt
+    CelValueTypeUInt    -> CelDataUInt   <$> parseCelUInt
+    CelValueTypeFloat   -> CelDataFloat  <$> parseCelFloat
+    CelValueTypeString  -> CelDataText   <$> parseCelTextFromString
+    CelValueTypeWString -> CelDataText   <$> parseCelTextFromWString
 
 parseCelDataValues []     = do return []
-parseCelDataValues (d:ds) = do
-  v  <- parseCelDataValue  d
+parseCelDataValues (d@(CelColumnDescription _ t _):ds) = do
+  v  <- parseCelDataValue  t
   vs <- parseCelDataValues ds
   return $ v:vs
 
-parseCelDataRaw  = parseCelDataValues
-parseCelDataRaws ds = parseNThings (parseCelDataRaw ds)
+parseCelDataRow  = parseCelDataValues
+parseCelDataRows ds = parseNThings (parseCelDataRow ds)
 
 
 data CelFile = CelFile CelHeader
