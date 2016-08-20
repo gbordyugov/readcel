@@ -277,20 +277,18 @@ data CelDataRows = CelDataRows [CelDataRow]
 
 instance Show CelDataRows where
   show (CelDataRows [])   = "[]"
-  -- show (CelDataRows (x:xs)) = show x ++ " ... (more " ++ show (length xs) ++ " data pieces follow)"
-  show (CelDataRows (x:xs)) = show x ++ " ... (more data pieces follow)"
+  show (CelDataRows (x:xs)) = show x ++ " ... (more data pieces follow) "
 
-parseCelDataValue t =
-  case t of
-    CelValueTypeByte    -> CelDataByte   <$> parseCelByte
-    CelValueTypeUByte   -> CelDataUByte  <$> parseCelUByte
-    CelValueTypeShort   -> CelDataShort  <$> parseCelShort
-    CelValueTypeUShort  -> CelDataUShort <$> parseCelUShort
-    CelValueTypeInt     -> CelDataInt    <$> parseCelInt
-    CelValueTypeUInt    -> CelDataUInt   <$> parseCelUInt
-    CelValueTypeFloat   -> CelDataFloat  <$> parseCelFloat
-    CelValueTypeString  -> CelDataText   <$> parseCelTextFromString
-    CelValueTypeWString -> CelDataText   <$> parseCelTextFromWString
+parseCelDataValue t = case t of
+  CelValueTypeByte    -> CelDataByte   <$> parseCelByte
+  CelValueTypeUByte   -> CelDataUByte  <$> parseCelUByte
+  CelValueTypeShort   -> CelDataShort  <$> parseCelShort
+  CelValueTypeUShort  -> CelDataUShort <$> parseCelUShort
+  CelValueTypeInt     -> CelDataInt    <$> parseCelInt
+  CelValueTypeUInt    -> CelDataUInt   <$> parseCelUInt
+  CelValueTypeFloat   -> CelDataFloat  <$> parseCelFloat
+  CelValueTypeString  -> CelDataText   <$> parseCelTextFromString
+  CelValueTypeWString -> CelDataText   <$> parseCelTextFromWString
 
 parseCelDataValues []     = do return []
 parseCelDataValues (d@(CelColumnDescription _ t _):ds) = do
