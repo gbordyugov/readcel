@@ -51,7 +51,7 @@ parseCelTextFromString = do
 
 parseCelTextFromWString = do
   s <- parseByteString 2
-  return $ DT.takeWhile (/= '\0') $ DTE.decodeUtf16BE s
+  return $ DT.takeWhile (/='\0') $ DTE.decodeUtf16BE s
  
 parseCelGUID     = parseCelTextFromString
 parseCelDateTime = parseCelTextFromWString
@@ -134,15 +134,51 @@ parseCelNamedParameter = do
       return $ ctor n $ CelParameterPlainText $ du16 v
     _ -> error $ "undefined MIME type: " ++ show t
     where
-      ctor = CelNamedParameter
-      f    = DT.takeWhile (/='\0')
-      du8  = f . DTE.decodeUtf8    . BSL.toStrict
-      du16 = f . DTE.decodeUtf16BE . BSL.toStrict
-
+      ctor   = CelNamedParameter
+      filter = DT.takeWhile (/='\0')
+      du8    = filter . DTE.decodeUtf8    . BSL.toStrict
+      du16   = filter . DTE.decodeUtf16BE . BSL.toStrict
       -- emulate later versions of Data.Binary.Get
       getInt8        = fromIntegral <$> getWord8
       getInt16be     = fromIntegral <$> getWord16be
       getInt32be     = fromIntegral <$> getWord32be
+
+{--
+parseCelNamedParameter :: Get CelNamedParameter
+parseCelNamedParameter = do
+  n <- parseCelTextFromWString
+  v <- parseLazyByteStringFromString
+  t <- parseCelTextFromWString
+  case (DT.unpack t) of
+    "text/x-calvin-integer-8" ->
+      return $ ctor n $ CelParameterInt8      $ runGet getInt8 v
+    "text/x-calvin-integer-16" ->
+      return $ ctor n $ CelParameterInt16     $ runGet getInt16be v
+    "text/x-calvin-integer-32" ->
+      return $ ctor n $ CelParameterInt32     $ runGet getInt32be v
+    "text/x-calvin-unsigned-integer-8" ->
+      return $ ctor n $ CelParameterUInt8     $ runGet getWord8 v
+    "text/x-calvin-unsigned-integer-16" ->
+      return $ ctor n $ CelParameterUInt16    $ runGet getWord16be v
+    "text/x-calvin-unsigned-integer-32" ->
+      return $ ctor n $ CelParameterUInt32    $ runGet getWord32be v
+    "text/x-calvin-float" ->
+      return $ ctor n $ CelParameterFloat     $ runGet getFloat32be v
+    "text/ascii" ->
+      return $ ctor n $ CelParameterAscii     $ du8 v
+    "text/plain" ->
+      return $ ctor n $ CelParameterPlainText $ du16 v
+    _ -> error $ "undefined MIME type: " ++ show t
+    where
+      ctor = CelNamedParameter
+      f    = DT.takeWhile (/='\0')
+      du8  = f . DTE.decodeUtf8    . BSL.toStrict
+      du16 = f . DTE.decodeUtf16BE . BSL.toStrict
+      -- emulate later versions of Data.Binary.Get
+      getInt8        = fromIntegral <$> getWord8
+      getInt16be     = fromIntegral <$> getWord16be
+      getInt32be     = fromIntegral <$> getWord32be
+--}
 
 
 parseCelNamedParameters = parseNThings parseCelNamedParameter
