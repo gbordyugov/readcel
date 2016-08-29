@@ -91,9 +91,9 @@ parseCelHeader = do
   return $ CelHeader magic version nGroups pos
 
 
-data CelParameter = CelParameterPlainText DT.Text
+data CelParameter = CelParameterPlainText CelText
                   | CelParameterFloat     Float
-                  | CelParameterAscii     DT.Text
+                  | CelParameterAscii     CelText
                   | CelParameterUInt8     Word8
                   | CelParameterUInt32    Word32
                   | CelParameterUInt16    Word16
@@ -102,7 +102,7 @@ data CelParameter = CelParameterPlainText DT.Text
                   | CelParameterInt32     Int32
                     deriving (Show, Eq)
 
-data CelNamedParameter = CelNamedParameter DT.Text CelParameter
+data CelNamedParameter = CelNamedParameter CelText CelParameter
                            deriving (Eq)
 
 instance Show CelNamedParameter where
