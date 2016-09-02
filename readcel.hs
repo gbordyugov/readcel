@@ -1,3 +1,5 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
 import           Control.Applicative ((<$>))
 import           Data.Maybe          (fromJust)
 import qualified Data.Text                 as DT
@@ -8,6 +10,8 @@ import           Data.Binary.IEEE754
 import           Data.Word
 import           Data.Char
 import           Data.Int
+
+import           Text.PrettyPrint.HughesPJClass
 
 type CelByte     = Int8
 type CelUByte    = Word8
@@ -33,6 +37,8 @@ parseCelUByte  = getWord8
 parseCelUShort = getWord16be
 parseCelUInt   = getWord32be
 parseCelFloat  = getFloat32be
+
+celIndent = 2
 
 parseGenericByteString parser charWidth = do
   len <- parseCelInt
@@ -74,6 +80,16 @@ data CelHeader = CelHeader CelUByte -- magic
                            CelUByte -- version
                            CelInt   -- nDataGroups
                            CelUInt  -- fstGroupPos
+
+instance Pretty CelHeader where
+  pPrint (CelHeader m v ng pos) =
+    vcat [ text "CelHeader:"
+         , nest i (text "magic :             " <> (integer $ fi m))
+         , nest i (text "version :           " <> (integer $ fi v))
+         , nest i (text "no of data groups : " <> (integer $ fi ng))
+         , nest i (text "first dg offset :   " <> (integer $ fi pos))
+         ]
+    where i = celIndent; fi = fromIntegral
 
 instance Show CelHeader where
   show (CelHeader m v n f) =
@@ -175,6 +191,24 @@ instance Show CelDataHeader where
     ++ "nvt triplets:     \n"  ++ show pars   ++ "\n"
     ++ "no of parents :     "  ++ show np     ++ "\n"
     ++ "parents:          \n"  ++ show ps     ++ "\n" 
+
+instance Pretty CelDataHeader where
+  pPrint (CelDataHeader id guid dt locale nPars pars np ps) = 
+    vcat ([ text "CelDataHeader:"
+         , (nest i $ text "data id :          " <> (text $ up id))
+         , (nest i $ text "guid :             " <> (text $ up guid))
+         , (nest i $ text "data/time :        " <> (text $ up dt))
+         , (nest i $ text "locale :           " <> (text $ up locale))
+         , (nest i $ text "no of parameters : " <> (integer $ fi nPars))]
+         ++
+         [nest i $ text "parameters"]
+         ++
+         [
+         (nest i $ text "no of parents :    " <> (integer $ fi np))
+         ]
+         ++
+         (map (nest i . pPrint) ps))
+    where i = celIndent; fi = fromIntegral; up = DT.unpack
 
 parseCelDataHeader :: Get CelDataHeader
 parseCelDataHeader = do
@@ -313,6 +347,13 @@ data CelFile = CelFile CelHeader
                        CelDataHeader
                        [CelDataGroup]
 
+instance Pretty CelFile where
+  pPrint (CelFile h dh gs) = vcat [ text "CelFile:"
+                                  , nest celIndent $ pPrint h
+                                  , nest celIndent $ pPrint dh
+                                  , nest celIndent $ text "data groups"
+                                  ]
+
 instance Show CelFile where
   show (CelFile h dh dg) = "Cel file header:\n" ++ show h
                         ++ "Cel data header:\n" ++ show dh
@@ -335,4 +376,5 @@ main = do
   let c@(CelFile h d g) = processCel f in
     do
     -- print c
-    return c
+    -- return c
+    return $ pPrint c
