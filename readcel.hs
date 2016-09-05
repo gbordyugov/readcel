@@ -13,6 +13,13 @@ import           Data.Int
 
 import           Text.PrettyPrint.HughesPJClass
 
+tshow   = text . show
+tunpack = text . DT.unpack
+
+fhang :: Pretty a => Doc -> Int -> [a] -> Doc
+fhang h i xs = hang h i $ vcat $ map pPrint xs
+
+
 type CelByte     = Int8
 type CelUByte    = Word8
 type CelShort    = Int16
@@ -76,6 +83,10 @@ skipTo p = do
   br <- bytesRead
   skip $ (fromIntegral p) - (fromIntegral br)
 
+
+
+
+
 data CelHeader = CelHeader CelUByte -- magic
                            CelUByte -- version
                            CelInt   -- nDataGroups
@@ -84,13 +95,11 @@ data CelHeader = CelHeader CelUByte -- magic
 
 instance Pretty CelHeader where
   pPrint (CelHeader m v ng pos) =
-    vcat [ text "CelHeader:"
-         , ni (text "magic :             " <> (integer $ fi m))
-         , ni (text "version :           " <> (integer $ fi v))
-         , ni (text "no of data groups : " <> (integer $ fi ng))
-         , ni (text "first dg offset :   " <> (integer $ fi pos))
-         ]
-    where ni = nest celIndentWidth; fi = fromIntegral
+    hang (text "CelHeader:") celIndentWidth $ vcat
+      [ text "magic :             " <> (tshow m)
+      , text "version :           " <> (tshow v)
+      , text "no of data groups : " <> (tshow ng)
+      , text "first dg offset :   " <> (tshow pos)]
 
 parseCelHeader :: Get CelHeader
 parseCelHeader = do
@@ -99,6 +108,9 @@ parseCelHeader = do
   nGroups <- parseCelInt
   pos     <- parseCelUInt
   return $ CelHeader magic version nGroups pos
+
+
+
 
 
 data CelParameter = CelParameterPlainText CelText
@@ -113,22 +125,22 @@ data CelParameter = CelParameterPlainText CelText
                     deriving (Show, Eq)
 
 instance Pretty CelParameter where
-  pPrint (CelParameterPlainText t) = text $ DT.unpack t
-  pPrint (CelParameterFloat     f) =        float f
-  pPrint (CelParameterAscii     t) = text $ DT.unpack t
-  pPrint (CelParameterUInt8     i) = text $ show i
-  pPrint (CelParameterUInt16    i) = text $ show i
-  pPrint (CelParameterUInt32    i) = text $ show i
-  pPrint (CelParameterInt8      i) = text $ show i
-  pPrint (CelParameterInt16     i) = text $ show i
-  pPrint (CelParameterInt32     i) = text $ show i
+  pPrint (CelParameterPlainText t) = tunpack t
+  pPrint (CelParameterFloat     f) =   float f
+  pPrint (CelParameterAscii     t) = tunpack t
+  pPrint (CelParameterUInt8     i) = tshow i
+  pPrint (CelParameterUInt16    i) = tshow i
+  pPrint (CelParameterUInt32    i) = tshow i
+  pPrint (CelParameterInt8      i) = tshow i
+  pPrint (CelParameterInt16     i) = tshow i
+  pPrint (CelParameterInt32     i) = tshow i
 
 data CelNamedParameter = CelNamedParameter CelText CelParameter
                            deriving (Show, Eq)
 
 instance Pretty CelNamedParameter where
   pPrint (CelNamedParameter n p) =
-    text (DT.unpack n) <> text ": " <> pPrint p
+    tunpack n <> text ": " <> pPrint p
 
 
 parseCelNamedParameter :: Get CelNamedParameter
@@ -169,6 +181,11 @@ parseCelNamedParameter = do
 
 parseCelNamedParameters = parseNThings parseCelNamedParameter
 
+
+
+
+
+
 data CelDataHeader = CelDataHeader CelText             -- dataId
                                    CelGUID             -- guId
                                    CelDateTime         -- datetime
@@ -181,17 +198,15 @@ data CelDataHeader = CelDataHeader CelText             -- dataId
 
 instance Pretty CelDataHeader where
   pPrint (CelDataHeader id guid dt locale nPars pars np ps) = 
-    vcat [ text "CelDataHeader:"
-         , ni $ text "data id: "          <> (text $ up id)
-         , ni $ text "guid: "             <> (text $ up guid)
-         , ni $ text "data/time: "        <> (text $ up dt)
-         , ni $ text "locale: "           <> (text $ up locale)
-         , ni $ text "no of parameters: " <> (integer $ fi nPars)
-         , ni $ text "parameters:"
-         , ni $ vcat (map (ni . pPrint) pars)
-         , ni $ text "no of parents: " <> (integer $ fi np)
-         , ni $ vcat (map (ni . pPrint) ps)]
-    where ni = nest celIndentWidth; fi = fromIntegral; up = DT.unpack
+    hang (text "CelDataHeader:") celIndentWidth $ vcat
+      [ text "data id: "                <> (tunpack id)
+      , text "guid: "                   <> (tunpack guid)
+      , text "data/time: "              <> (tunpack dt)
+      , text "locale: "                 <> (tunpack locale)
+      , fhang (text "no of parameters:" <> (tshow nPars))
+        celIndentWidth pars
+      , fhang (text "parents: "         <> (tshow np))
+        celIndentWidth ps]
 
 parseCelDataHeader :: Get CelDataHeader
 parseCelDataHeader = do
@@ -207,6 +222,10 @@ parseCelDataHeader = do
 
 parseCelDataHeaders = parseNThings parseCelDataHeader
 
+
+
+
+
 data CelDataGroup = CelDataGroup CelUInt      -- posNextDataGroup
                                  CelUInt      -- posFirstDataSet
                                  CelInt       -- no of data sets
@@ -216,13 +235,12 @@ data CelDataGroup = CelDataGroup CelUInt      -- posNextDataGroup
 
 instance Pretty CelDataGroup where
   pPrint (CelDataGroup np pf nos name dsets) = 
-    vcat [ text "CelDataGroup:"
-         , ni $ text "name: "                        <> (text $ up name)
-         , ni $ text "position of next data group: " <> (int $ fi np)
-         , ni $ text "position of first data set: "  <> (int $ fi pf)
-         , ni $ text "no of data sets: "             <> (int $ fi nos)
-         , ni $ vcat (map (ni . pPrint) dsets)]
-    where ni = nest celIndentWidth; fi = fromIntegral; up = DT.unpack
+    hang (text "CelDataGroup:") celIndentWidth $ vcat
+      [ text "name: "                        <> (tunpack name)
+      , text "position of next data group: " <> (tshow np)
+      , text "position of first data set: "  <> (tshow pf)
+      , text "no of data sets: "             <> (tshow nos)
+      , fhang (text "data sets:") celIndentWidth dsets]
 
 parseCelDataGroup = do
   np    <- parseCelUInt
@@ -254,28 +272,25 @@ data CelDataValueType = CelValueTypeByte
                         deriving (Show, Enum)
 
 instance Pretty CelDataValueType where
-  pPrint CelValueTypeByte    = text "CelValueTypeByte"
-  pPrint CelValueTypeUByte   = text "CelValueTypeUByte"
-  pPrint CelValueTypeShort   = text "CelValueTypeShort"
-  pPrint CelValueTypeUShort  = text "CelValueTypeUShort"
-  pPrint CelValueTypeInt     = text "CelValueTypeInt"
-  pPrint CelValueTypeUInt    = text "CelValueTypeUInt"
-  pPrint CelValueTypeFloat   = text "CelValueTypeFloat"
-  pPrint CelValueTypeString  = text "CelValueTypeString"
-  pPrint CelValueTypeWString = text "CelValueTypeWString"
+  pPrint a = tshow a
 
 parseCelValueType = toEnum . fromIntegral <$> parseCelByte
+
+
+
+
 
 data CelColumnDescription = CelColumnDescription CelText -- column name
                                    CelDataValueType      -- value type
                                    CelInt                -- type size
                                    deriving (Show)
+
 instance Pretty CelColumnDescription where
   pPrint (CelColumnDescription name tipe size) = 
     (text "Column name") <+>
-    (text $ show $ DT.unpack name) <+>
+    (tunpack name) <+>
     (text "of type") <+> (pPrint tipe) <+>
-    (text "of size") <+> (int $ fromIntegral size)
+    (text "of size") <+> (tshow size)
 
 parseCelColumnDescription = do
   n <- parseCelTextFromWString
@@ -284,6 +299,10 @@ parseCelColumnDescription = do
   return $ CelColumnDescription n t s
 
 parseCelColumnDescriptions = parseNThings parseCelColumnDescription
+
+
+
+
 
 data CelDataSet = CelDataSet CelUInt                -- fPosFirstEle
                              CelUInt                -- fPosNextDataSet
@@ -297,19 +316,17 @@ data CelDataSet = CelDataSet CelUInt                -- fPosFirstEle
                              deriving (Show)
 
 instance Pretty CelDataSet where
-  pPrint (CelDataSet fpf fpn name npars pars ncols cds nrows rows) = 
-    vcat [ text "CelDataGroup:"
-         , ni $ text "data set name: "             <> (text $ up name)
-         , ni $ text "position of first element: " <> (int $ fi fpf)
-         , ni $ text "position of next data set: " <> (int $ fi fpn)
-         , ni $ text "no of parameters: "          <> (int $ fi npars)
-         , ni $ vcat $ map (ni . pPrint) pars
-         , ni $ text "number of columns:"          <> (int $ fi ncols)
-         , ni $ vcat $ map (ni . pPrint) cds
-         , ni $ text "number of rows: "            <> (int $ fi nrows)
-         , ni $ pPrint rows
-         ]
-    where ni = nest celIndentWidth; fi = fromIntegral; up = DT.unpack
+  pPrint (CelDataSet fpf fpnds name npars pars ncols cols nrows rows) = 
+    hang (text "CelDataSet:") celIndentWidth $ vcat
+      [ text "data set name: "             <> (tunpack name)
+      , text "position of first element: " <> (tshow fpf)
+      , text "position of next data set: " <> (tshow fpnds)
+      , fhang (text "no of parameters: "   <> (tshow npars))
+        celIndentWidth $ pars
+      , fhang (text "number of columns: "  <> (tshow ncols))
+        celIndentWidth $ cols
+      , text "number of rows: "            <> (tshow nrows)
+      , pPrint rows]
 
 parseCelDataSet = do
   fp1   <- parseCelUInt
@@ -343,14 +360,14 @@ data CelDataValue = CelDataByte   CelByte
                     deriving (Eq, Show)
 
 instance Pretty CelDataValue where
-  pPrint (CelDataByte   x) = int $ fromIntegral x
-  pPrint (CelDataUByte  x) = int $ fromIntegral x
-  pPrint (CelDataShort  x) = int $ fromIntegral x
-  pPrint (CelDataUShort x) = int $ fromIntegral x
-  pPrint (CelDataInt    x) = int $ fromIntegral x
-  pPrint (CelDataUInt   x) = int $ fromIntegral x
+  pPrint (CelDataByte   x) = tshow x
+  pPrint (CelDataUByte  x) = tshow x
+  pPrint (CelDataShort  x) = tshow x
+  pPrint (CelDataUShort x) = tshow x
+  pPrint (CelDataInt    x) = tshow x
+  pPrint (CelDataUInt   x) = tshow x
   pPrint (CelDataFloat  x) = float x
-  pPrint (CelDataText   x) = text $ DT.unpack x
+  pPrint (CelDataText   x) = tunpack x
 
 type CelDataRow = [CelDataValue]
 
@@ -386,14 +403,15 @@ data CelFile = CelFile CelHeader
                        [CelDataGroup]
                        deriving (Show)
 
+
+
 instance Pretty CelFile where
   pPrint (CelFile h dh gs) =
-    vcat [ text "CelFile:"
-         , ni $ pPrint h
-         , ni $ pPrint dh
-         , ni $ text "data groups:"
-         , ni $ vcat (map (ni . pPrint) gs)
-         ] where ni = nest celIndentWidth
+    hang (text "CelFile") celIndentWidth $
+      vcat [ pPrint h
+      , pPrint dh
+      , fhang (text "data groups:") celIndentWidth gs
+      ]
 
 parseCelFile :: Get CelFile
 parseCelFile = do
