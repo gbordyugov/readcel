@@ -1,7 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 import           Control.Applicative ((<$>))
-import           Data.Maybe          (fromJust)
 import qualified Data.Text                 as DT
 import qualified Data.Text.Encoding        as DTE
 import qualified Data.ByteString.Lazy      as BSL
@@ -429,4 +428,5 @@ main = do
   f <- BSL.readFile "array.cel"
   let c@(CelFile h d g) = processCel f in
     do
-    return $ pPrint c
+    print $ pPrint c
+    return 0
