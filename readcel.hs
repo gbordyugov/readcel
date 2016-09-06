@@ -224,7 +224,6 @@ parseCelDataHeaders = parseNThings parseCelDataHeader
 
 
 
-
 data CelDataGroup = CelDataGroup CelUInt      -- posNextDataGroup
                                  CelUInt      -- posFirstDataSet
                                  CelInt       -- no of data sets
@@ -286,7 +285,7 @@ data CelColumnDescription = CelColumnDescription CelText -- column name
 
 instance Pretty CelColumnDescription where
   pPrint (CelColumnDescription name tipe size) = 
-    (text "Column name") <+>
+    -- (text "Column name") <+>
     (tunpack name) <+>
     (text "of type") <+> (pPrint tipe) <+>
     (text "of size") <+> (tshow size)
@@ -393,7 +392,7 @@ parseCelDataValues (d@(CelColumnDescription _ t _):ds) = do
   vs <- parseCelDataValues ds
   return $ v:vs
 
-parseCelDataRow  = parseCelDataValues
+parseCelDataRow = parseCelDataValues
 parseCelDataRows ds = parseNThings (parseCelDataRow ds)
 
 
